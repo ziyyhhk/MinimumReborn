@@ -1,5 +1,33 @@
 # Changelog
 
+## v1.6.2 (2026-10-30)
+
+Found by a read-only audit of the panel, not by playing. Two controls were dead.
+
+* **Cull-mode cycle rows wrote an empty setting name.** `cycleRow` moved its key into the row
+  record and then passed the moved-from string to the action, so `getSettingValue("")` was
+  called for the Particles and Editor mode rows (the Scene sprites row only worked because the
+  name is short enough to survive small-string optimization). The action now reads the key back
+  from the row.
+* **The Spawn budget row did nothing.** `makeCycleAction` had no `SpawnBudget` branch, so the
+  button re-read the value and never wrote it. It now steps off / 8 / 16 / 32 / off.
+* **`cull-offscreen-particles` had no control anywhere**, although it gates the whole particle
+  off-screen test. It is on the Culling page now.
+* **The finished benchmark result is shown in the panel** (`Last benchmark` on the Diagnostics
+  page) instead of only in the Geode log.
+* **One panel at a time.** Opening the badge twice created two popups with two live schedules;
+  the open panel now registers itself and a second open is ignored.
+* **Reset confirmation lifetime**: the popup is retained for the life of the confirmation alert
+  and released when it is answered, instead of the alert holding a raw pointer.
+* **Small-window fit uses the tighter of width and height**, and scales only the content layer,
+  so a short window no longer clips the footer and nothing can be double-scaled.
+* **The pause-menu badge is clamped inside the visible rect**, so a narrow window cannot push it
+  off-screen.
+* Switches no profile owns (master enable, render gate, background throttle, particle culling
+  master, overlay, low latency, timer resolution, adaptive cap, editor culling, no-input-delay)
+  no longer rewrite the profile to Custom.
+
+
 ## v1.6.1 (2026-10-30)
 
 Follow-ups from a read-only review of the new low-latency hook.
