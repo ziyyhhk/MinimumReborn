@@ -414,6 +414,7 @@ namespace {
             this->buildPage();
             this->schedule(schedule_selector(RebornPopup::refreshLive), 0.25f);
             this->refreshLive(0.f);
+            g_openPanel = this;
             return true;
         }
 
@@ -929,17 +930,21 @@ namespace {
         }
 
         void onReset(CCObject*) {
+            this->retain();
             createQuickPopup(
                 "Reset Minimum Reborn",
                 "Restore every setting to the <cy>Balanced</c> defaults?\n"
                 "The current profile and all toggles will be replaced.",
                 "Cancel", "Reset",
-                // RefPtr keeps the panel alive until the alert is answered; a raw this would
-                // dangle if the popup were closed while the confirmation was still up.
-                [self = cocos2d::RefPtr<RebornPopup>(this)](FLAlertLayer*, bool confirmed) {
-                    if (!confirmed) return;
-                    reborn::resetToDefaults();
-                    if (self) self->refreshPage();
+                // The alert outlives nothing on its own: hold a reference for its lifetime so
+                // a panel closed while the confirmation is up cannot be called through a
+                // dangling pointer. FLAlertLayer always invokes this callback on close.
+                [this](FLAlertLayer*, bool confirmed) {
+                    if (confirmed) {
+                        reborn::resetToDefaults();
+                        this->refreshPage();
+                    }
+                    this->release();
                 }
             );
         }
@@ -1107,6 +1112,11 @@ namespace {
             return text;
         }
 
+        void onExit() override {
+            if (g_openPanel == this) g_openPanel = nullptr;
+            Popup::onExit();
+        }
+
         void refreshLive(float) {
             for (auto& metric : m_metrics) {
                 if (!metric.label) continue;
@@ -1139,17 +1149,13 @@ namespace {
     // machine and the mod has no reason to sit in that call chain. The consequence is that
     // the Editor page counters are read from a level pause menu, not inside the editor.
     // -----------------------------------------------------------------------------
+    // One panel at a time. Two popups would mean two live schedules and two sets of controls
+    // writing the same settings; the scene graph cannot be searched cheaply here (this
+    // binding has no recursive lookup), so the open panel registers itself.
+    RebornPopup* g_openPanel = nullptr;
+
     void openRebornPanel() {
-        // Opening twice would give two popups, two live schedules and two sets of controls
-        // writing the same settings, so an existing panel is found and left alone.
-        auto* scene = CCDirector::get() ? CCDirector::get()->getRunningScene() : nullptr;
-        if (scene) {
-            bool already = false;
-            scene->recurse([&already](Node* node) {
-                if (!already && node->getID() == "minimum-reborn-popup"_spr) already = true;
-            });
-            if (already) return;
-        }
+        if (g_openPanel) return;
         if (auto* popup = RebornPopup::create()) {
             popup->show();
         }
