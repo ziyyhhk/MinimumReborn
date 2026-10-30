@@ -41,14 +41,19 @@ namespace reborn {
             char const* name;
             unsigned int particleCap;
             int backgroundFps;
+            bool rendererOptimized;
+            char const* sceneCull;
+            char const* particleCull;
         };
 
         // Only features that exist are listed. No profile claims a feature the build lacks.
+        // Default takes the game's draw path unchanged, so the original renderer is what you
+        // get; the other profiles turn on the optimized draw path with increasing culling.
         constexpr ProfileValues kProfiles[] = {
-            {"Default",     256, 20},
-            {"Balanced",    128, 20},
-            {"Performance",  64, 15},
-            {"Extreme",      32, 10},
+            {"Default",     256, 20, false, "Off",          "Off"},
+            {"Balanced",    128, 20, true,  "Conservative", "Conservative"},
+            {"Performance",  64, 15, true,  "Conservative", "Conservative"},
+            {"Extreme",      32, 10, true,  "Aggressive",   "Aggressive"},
         };
 
         char const* profileName(Profile profile) {
@@ -89,6 +94,23 @@ namespace reborn {
             return Priority::Normal;
         }
 
+        CullMode parseCullMode(std::string const& value) {
+            if (value == "Aggressive") return CullMode::Aggressive;
+            if (value == "Conservative") return CullMode::Conservative;
+            return CullMode::Off;
+        }
+
+        // Margins are in world units (pixels at 1x zoom). Conservative keeps enough room that
+        // a full frame of camera movement at any normal scroll speed cannot reach an object
+        // that was rejected; Aggressive trades that buffer for a smaller test.
+        double marginFor(CullMode mode, double conservative, double aggressive) {
+            switch (mode) {
+                case CullMode::Aggressive: return aggressive;
+                case CullMode::Conservative: return conservative;
+                default: return 0.0;
+            }
+        }
+
         // Writes a named profile into the individual settings. Only runs when the profile
         // setting itself changed, so it never fights the user's edits.
         void applyProfileValues(Profile profile) {
@@ -96,9 +118,14 @@ namespace reborn {
             if (!values) return;
 
             auto* mod = Mod::get();
-            mod->setSettingValue<bool>("sprite-fast-path", true);
-            mod->setSettingValue<bool>("skip-idle-particles", true);
-            mod->setSettingValue<bool>("cull-offscreen-particles", true);
+            mod->setSettingValue<std::string>(
+                "renderer-mode", values->rendererOptimized ? "Optimized" : "Engine"
+            );
+            mod->setSettingValue<bool>("sprite-fast-path", values->rendererOptimized);
+            mod->setSettingValue<bool>("skip-idle-particles", values->rendererOptimized);
+            mod->setSettingValue<bool>("cull-offscreen-particles", std::strcmp(values->particleCull, "Off") != 0);
+            mod->setSettingValue<std::string>("particle-cull-mode", values->particleCull);
+            mod->setSettingValue<std::string>("scene-cull", values->sceneCull);
             mod->setSettingValue<bool>("cap-particles", true);
             mod->setSettingValue<int64_t>("particle-cap", static_cast<int64_t>(values->particleCap));
 #ifdef GEODE_IS_WINDOWS
@@ -137,9 +164,14 @@ namespace reborn {
         }
 
         c.enabled = mod->getSettingValue<bool>("enabled");
+        c.rendererOptimized = mod->getSettingValue<std::string>("renderer-mode") != "Engine";
         c.spriteFastPath = mod->getSettingValue<bool>("sprite-fast-path");
         c.skipIdleParticles = mod->getSettingValue<bool>("skip-idle-particles");
         c.cullOffscreenParticles = mod->getSettingValue<bool>("cull-offscreen-particles");
+        c.particleCull = parseCullMode(mod->getSettingValue<std::string>("particle-cull-mode"));
+        c.sceneCull = parseCullMode(mod->getSettingValue<std::string>("scene-cull"));
+        c.particleCullMargin = marginFor(c.particleCull, 128.0, 8.0);
+        c.sceneCullMargin = marginFor(c.sceneCull, 160.0, 16.0);
         c.capParticles = mod->getSettingValue<bool>("cap-particles");
 
         int64_t cap = mod->getSettingValue<int64_t>("particle-cap");
@@ -191,9 +223,12 @@ namespace reborn {
     void resetToDefaults() {
         auto* mod = Mod::get();
         mod->setSettingValue<bool>("enabled", true);
+        mod->setSettingValue<std::string>("renderer-mode", "Optimized");
         mod->setSettingValue<bool>("sprite-fast-path", true);
         mod->setSettingValue<bool>("skip-idle-particles", true);
         mod->setSettingValue<bool>("cull-offscreen-particles", true);
+        mod->setSettingValue<std::string>("particle-cull-mode", "Conservative");
+        mod->setSettingValue<std::string>("scene-cull", "Conservative");
         mod->setSettingValue<bool>("cap-particles", true);
         mod->setSettingValue<int64_t>("particle-cap", static_cast<int64_t>(kDefaultParticleCap));
         mod->setSettingValue<int64_t>("spawn-budget", 0);

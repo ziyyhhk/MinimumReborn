@@ -1,15 +1,24 @@
 #pragma once
 
-// Rendering fast paths implemented by the mod. See rendering.cpp for the rationale and
-// the exact conditions under which each draw is skipped.
+// Rendering fast paths implemented by the mod.
+//
+// This is the "optimized draw path": every function here can skip a draw submission, but
+// none of them changes game state, node transforms, updates, physics or input. When the
+// renderer mode is set to Engine (or the master switch is off) every hook falls straight
+// through to the original cocos2d function.
+//
+// See rendering.cpp for the rationale, the exact skip conditions and the safety margins.
 
 namespace reborn {
 
-    // Called once at the start of every CCDirector::drawScene call. Particle systems
-    // created after this point count against the per-frame spawn budget.
-    void particleFrameBegin();
+    // Called once at the start of every CCDirector::drawScene call, before any child is
+    // visited. Takes the viewport snapshot used by all visibility tests, starts a new frame
+    // id for the transform cache and starts this frame's particle spawn budget.
+    void renderFrameBegin();
 
-    // Particle pool size that is actually applied right now (config cap, lowered by the
-    // adaptive step if one is ever enabled; currently the configured cap).
+    // Particle pool size that is applied right now (the configured cap).
     unsigned int effectiveParticleCap();
+
+    // True when at least one visibility test is active (renderer optimized + a cull mode).
+    bool visibilityCullingActive();
 }

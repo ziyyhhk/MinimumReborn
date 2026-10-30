@@ -5,9 +5,9 @@
 	},
 	"id": "ziyyhhk.minimum-reborn",
 	"name": "Minimum Reborn",
-	"version": "v1.0.0",
+	"version": "v1.1.0",
 	"developer": "ziyyhhk",
-	"description": "A rendering-focused rebuild of Minimum. Skips sprite and particle draws that cannot produce a pixel, caps particle pools, and offers an optional render gate that draws at a fixed rate while the game's logic keeps its normal schedule. Physics, input timing and the FPS cap are never changed. Windows build for Geometry Dash 2.2081.",
+	"description": "A rendering-focused rebuild of Minimum. Engine or Optimized renderer mode, zero-pixel sprite and particle fast-outs, conservative scene and particle visibility culling, particle pool caps, and an optional render gate that keeps the scheduler running. Physics, input timing and the FPS cap are never changed. Windows build for Geometry Dash 2.2081.",
 	"tags": [
 		"performance",
 		"utility"
@@ -51,6 +51,16 @@
 			"type": "title",
 			"name": "Rendering"
 		},
+		"renderer-mode": {
+			"name": "Renderer Mode",
+			"description": "Engine: every draw call goes through the unmodified game renderer; the mod only measures. Optimized: the mod's draw path runs - zero-pixel sprites and particle systems are not submitted, and objects entirely outside the viewport are skipped. Draw order, blending, glow, clipping and shaders are never changed. This is not a replacement rendering backend.",
+			"type": "string",
+			"default": "Optimized",
+			"one-of": [
+				"Engine",
+				"Optimized"
+			]
+		},
 		"sprite-fast-path": {
 			"name": "Sprite Draw Fast-Out",
 			"description": "Skips the draw call for sprites that cannot produce any pixel: opacity 0, zero scale on an axis, or an empty content size. Children are still drawn normally, so the image is unchanged. On by default.",
@@ -68,6 +78,29 @@
 			"description": "Does not draw relative-position particle systems whose worst-case reach does not touch the screen. They keep updating, so emission timing and motion are unchanged when they scroll back. Free and grouped systems are always drawn.",
 			"type": "bool",
 			"default": true
+		},
+		"particle-cull-mode": {
+			"name": "Particle Culling Mode",
+			"description": "Conservative keeps 128 world units of margin around the screen, so a system is only skipped when it cannot come into view before the next frame. Aggressive keeps 8 units and skips more: use it to see how much draw work culling removes, not on a level where you care about the edges. Draw-only either way; simulation is never skipped.",
+			"type": "string",
+			"default": "Conservative",
+			"one-of": [
+				"Off",
+				"Conservative",
+				"Aggressive"
+			],
+			"enable-if": "cull-offscreen-particles"
+		},
+		"scene-cull": {
+			"name": "Scene Object Culling",
+			"description": "Skips the draw call of sprites whose whole quad is outside the viewport plus a margin (160 units conservative, 16 aggressive). The test uses the parent's world transform and a rotation-safe radius, and any doubt answers draw. Node updates, animations, triggers, collisions and children are untouched - only the draw is skipped. Covers decorations, glow sprites and trails because they are all drawn through the same sprite path. Off in the Default profile.",
+			"type": "string",
+			"default": "Conservative",
+			"one-of": [
+				"Off",
+				"Conservative",
+				"Aggressive"
+			]
 		},
 		"cap-particles": {
 			"name": "Cap Particle Pool Size",

@@ -92,7 +92,7 @@ namespace {
             double const lowFps = stats.onePercentLowFps(240);
             double const workMs = stats.averageWorkMs(60);
 
-            char text[512];
+            char text[640];
             if (cfg.overlayDetailed) {
                 char lowText[32];
                 if (lowFps > 0.5) std::snprintf(lowText, sizeof(lowText), "%.0f", lowFps);
@@ -100,13 +100,15 @@ namespace {
                 std::snprintf(
                     text, sizeof(text),
                     "%s%u FPS%s | avg %.1f ms | p95 %.1f ms | 1%% low %s\n"
-                    "logic %u/s | draw %.2f ms | %s\n"
-                    "sprite skips %u/s | particle skips %u/s | pools capped %u/s | logic-only %u/s",
+                    "logic %u/s | draw %.2f ms | %s | renderer %s\n"
+                    "scene culled %u/s | sprite skips %u/s | particle skips %u/s | pools capped %u/s | logic-only %u/s",
                     cfg.enabled ? "" : "(OFF) ", fps,
                     counters.throttled.load(std::memory_order_relaxed) ? " (background)" : "",
                     avgMs, p95Ms, lowText,
                     logic, workMs,
                     bottleneckLabel(static_cast<reborn::Bottleneck>(counters.bottleneck.load(std::memory_order_relaxed))),
+                    cfg.rendererOptimized ? "optimized" : "engine",
+                    counters.sceneCulledPerSec.load(std::memory_order_relaxed),
                     counters.spriteSkipsPerSec.load(std::memory_order_relaxed),
                     counters.particleSkipsPerSec.load(std::memory_order_relaxed),
                     counters.cappedPerSec.load(std::memory_order_relaxed),
@@ -158,7 +160,7 @@ namespace {
     // Popup
     // ---------------------------------------------------------------------------------
     constexpr float kPopupWidth = 380.f;
-    constexpr float kPopupHeight = 300.f;
+    constexpr float kPopupHeight = 340.f;
 
     CCScale9Sprite* makePanel(float width, float height, std::uint8_t opacity) {
         auto* panel = CCScale9Sprite::create("square02b_001.png", {0.f, 0.f, 80.f, 80.f});
@@ -185,6 +187,9 @@ namespace {
         std::vector<CCMenuItemToggler*> m_togglers;
         std::vector<std::pair<CCScale9Sprite*, char const*>> m_profileButtons;
         CCLabelBMFont* mLive = nullptr;
+        CCLabelBMFont* mRenderLabel = nullptr;
+        CCLabelBMFont* mSceneLabel = nullptr;
+        CCLabelBMFont* mParticleLabel = nullptr;
         std::string mLastLive;
 
         static constexpr char const* kProfileNames[] = {
@@ -197,9 +202,9 @@ namespace {
 
             m_toggles = {
                 {"enabled", "Mod enabled"},
-                {"sprite-fast-path", "Sprite draw fast-out"},
-                {"skip-idle-particles", "Skip idle particle draws"},
-                {"cap-particles", "Cap particle pool size"},
+                {"sprite-fast-path", "Sprite fast-out"},
+                {"skip-idle-particles", "Skip idle particles"},
+                {"cull-offscreen-particles", "Skip off-screen particles"},
                 {"show-overlay", "Performance overlay"},
             };
 #ifdef GEODE_IS_WINDOWS
@@ -208,6 +213,7 @@ namespace {
 
             this->buildLive();
             this->buildProfiles();
+            this->buildModes();
             this->buildToggles();
             this->buildFooter();
             this->refreshLive(0.f);
@@ -215,18 +221,19 @@ namespace {
 
             this->syncProfiles();
             this->syncTogglers();
+            this->syncModes();
             return true;
         }
 
         void buildLive() {
-            auto* panel = makePanel(kPopupWidth - 28.f, 46.f, 44);
+            auto* panel = makePanel(kPopupWidth - 28.f, 54.f, 44);
             if (panel) {
-                m_buttonMenu->addChildAtPosition(panel, Anchor::Center, ccp(0.f, 110.f));
+                m_buttonMenu->addChildAtPosition(panel, Anchor::Center, ccp(0.f, 132.f));
             }
             mLive = CCLabelBMFont::create("--", "chatFont.fnt");
             mLive->setAlignment(kCCTextAlignmentCenter);
-            mLive->setScale(0.8f);
-            m_buttonMenu->addChildAtPosition(mLive, Anchor::Center, ccp(0.f, 110.f));
+            mLive->setScale(0.62f);
+            m_buttonMenu->addChildAtPosition(mLive, Anchor::Center, ccp(0.f, 132.f));
         }
 
         void buildProfiles() {
@@ -237,7 +244,7 @@ namespace {
 
             auto* caption = CCLabelBMFont::create("Profile", "goldFont.fnt");
             caption->setScale(0.5f);
-            m_buttonMenu->addChildAtPosition(caption, Anchor::Center, ccp(0.f, 80.f));
+            m_buttonMenu->addChildAtPosition(caption, Anchor::Center, ccp(0.f, 96.f));
 
             for (std::size_t i = 0; i < 5; ++i) {
                 auto* holder = CCNode::create();
@@ -256,14 +263,48 @@ namespace {
                 auto* button = CCMenuItemSpriteExtra::create(holder, this, menu_selector(RebornPopup::onProfile));
                 button->setTag(static_cast<int>(i));
                 m_buttonMenu->addChildAtPosition(
-                    button, Anchor::Center, ccp(startX + static_cast<float>(i) * spacing, 58.f)
+                    button, Anchor::Center, ccp(startX + static_cast<float>(i) * spacing, 72.f)
                 );
                 m_profileButtons.push_back({background, kProfileNames[i]});
             }
         }
 
+        // Three cycle buttons: renderer mode, scene culling, particle culling. Each one shows
+        // the state that is actually in effect and writes the real setting when clicked.
+        CCNode* makeModeButton(char const* caption, int tag, CCLabelBMFont** outLabel) {
+            float const width = 110.f;
+            float const height = 24.f;
+
+            auto* holder = CCNode::create();
+            holder->setContentSize({width, height});
+
+            auto* background = makePanel(width, height, 26);
+            if (background) {
+                background->setPosition({width / 2.f, height / 2.f});
+                holder->addChild(background);
+            }
+            auto* label = CCLabelBMFont::create(caption, "bigFont.fnt");
+            fitLabel(label, 0.32f, width - 8.f);
+            label->setPosition({width / 2.f, height / 2.f + 1.f});
+            holder->addChild(label);
+            *outLabel = label;
+
+            auto* button = CCMenuItemSpriteExtra::create(holder, this, menu_selector(RebornPopup::onMode));
+            button->setTag(tag);
+            m_buttonMenu->addChildAtPosition(
+                button, Anchor::Center, ccp(-116.f + static_cast<float>(tag) * 116.f, 44.f)
+            );
+            return holder;
+        }
+
+        void buildModes() {
+            this->makeModeButton("Render", 0, &mRenderLabel);
+            this->makeModeButton("Scene", 1, &mSceneLabel);
+            this->makeModeButton("Particles", 2, &mParticleLabel);
+        }
+
         void buildToggles() {
-            float y = 34.f;
+            float y = 14.f;
             for (std::size_t i = 0; i < m_toggles.size(); ++i) {
                 auto* panel = makePanel(kPopupWidth - 44.f, 24.f, 20);
                 if (panel) {
@@ -283,12 +324,12 @@ namespace {
                     label, Anchor::Center, ccp(-kPopupWidth / 2.f + 58.f, y), ccp(0.f, 0.5f)
                 );
 
-                y -= 25.f;
+                y -= 24.f;
             }
         }
 
         void buildFooter() {
-            float const buttonY = -112.f;
+            float const buttonY = -134.f;
 
             {
                 auto* sprite = ButtonSprite::create("Reset", "goldFont.fnt", "GJ_button_05.png", 0.7f);
@@ -309,7 +350,15 @@ namespace {
                 );
                 fitLabel(info, 0.62f, kPopupWidth - 40.f);
                 info->setOpacity(185);
-                m_buttonMenu->addChildAtPosition(info, Anchor::Center, ccp(0.f, -132.f));
+                m_buttonMenu->addChildAtPosition(info, Anchor::Center, ccp(0.f, -158.f));
+            }
+        }
+
+        static char const* cullShort(reborn::CullMode mode) {
+            switch (mode) {
+                case reborn::CullMode::Conservative: return "con";
+                case reborn::CullMode::Aggressive: return "agg";
+                default: return "off";
             }
         }
 
@@ -317,18 +366,73 @@ namespace {
             if (!mLive) return;
             auto& counters = reborn::counters();
             auto& stats = reborn::frameStats();
-            char text[192];
+            auto const& cfg = reborn::config();
+            char text[256];
             std::snprintf(
-                text, sizeof(text), "%u FPS  |  avg %.1f ms  |  1%% low %.0f  |  logic %u/s",
+                text, sizeof(text),
+                "%u FPS  |  avg %.1f ms  |  1%% low %.0f  |  logic %u/s\n"
+                "renderer %s  |  scene %s %u/s  |  particles %s %u/s",
                 counters.fps.load(std::memory_order_relaxed),
                 stats.averageFrameMs(120),
                 stats.onePercentLowFps(240),
-                counters.logicFps.load(std::memory_order_relaxed)
+                counters.logicFps.load(std::memory_order_relaxed),
+                cfg.rendererOptimized ? "optimized" : "engine",
+                cullShort(cfg.sceneCull), counters.sceneCulledPerSec.load(std::memory_order_relaxed),
+                cullShort(cfg.particleCull), counters.particleSkipsPerSec.load(std::memory_order_relaxed)
             );
             if (mLastLive != text) {
                 mLastLive = text;
                 mLive->setString(text);
             }
+        }
+
+        void syncModes() {
+            auto* mod = Mod::get();
+            bool const optimized = mod->getSettingValue<std::string>("renderer-mode") != "Engine";
+            std::string const scene = mod->getSettingValue<std::string>("scene-cull");
+            std::string const particles = mod->getSettingValue<std::string>("particle-cull-mode");
+
+            if (mRenderLabel) mRenderLabel->setString(optimized ? "Render: Opt" : "Render: Engine");
+            if (mSceneLabel) {
+                mSceneLabel->setString(
+                    scene == "Off" ? "Scene: Off" : scene == "Aggressive" ? "Scene: Agg" : "Scene: Con"
+                );
+            }
+            if (mParticleLabel) {
+                mParticleLabel->setString(
+                    particles == "Off" ? "Particles: Off"
+                    : particles == "Aggressive" ? "Particles: Agg" : "Particles: Con"
+                );
+            }
+        }
+
+        void onMode(CCObject* sender) {
+            int const tag = static_cast<CCNode*>(sender)->getTag();
+            auto* mod = Mod::get();
+
+            if (tag == 0) {
+                bool const optimized = mod->getSettingValue<std::string>("renderer-mode") != "Engine";
+                mod->setSettingValue<std::string>("renderer-mode", optimized ? "Engine" : "Optimized");
+            }
+            else {
+                char const* key = tag == 1 ? "scene-cull" : "particle-cull-mode";
+                std::string const current = mod->getSettingValue<std::string>(key);
+                std::string const next = current == "Off" ? "Conservative"
+                                       : current == "Conservative" ? "Aggressive"
+                                       : "Off";
+                mod->setSettingValue<std::string>(key, next);
+                if (tag == 2) {
+                    mod->setSettingValue<bool>("cull-offscreen-particles", next != "Off");
+                }
+            }
+
+            if (mod->getSettingValue<std::string>("profile") != "Custom") {
+                mod->setSettingValue<std::string>("profile", "Custom");
+            }
+            reborn::refreshConfig();
+            this->syncProfiles();
+            this->syncTogglers();
+            this->syncModes();
         }
 
         void syncProfiles() {
@@ -354,6 +458,7 @@ namespace {
             reborn::refreshConfig();
             this->syncProfiles();
             this->syncTogglers();
+            this->syncModes();
         }
 
         void onToggle(CCObject* sender) {
@@ -371,12 +476,14 @@ namespace {
             reborn::refreshConfig();
             this->syncProfiles();
             this->syncTogglers();
+            this->syncModes();
         }
 
         void onReset(CCObject*) {
             reborn::resetToDefaults();
             this->syncProfiles();
             this->syncTogglers();
+            this->syncModes();
         }
 
         void onAllSettings(CCObject*) {

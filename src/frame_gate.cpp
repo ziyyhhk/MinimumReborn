@@ -67,6 +67,7 @@ namespace {
         std::uint64_t seenParticleSkips = 0;
         std::uint64_t seenCapped = 0;
         std::uint64_t seenLogicOnly = 0;
+        std::uint64_t seenSceneCulled = 0;
     };
 
     GateState& state() {
@@ -112,10 +113,15 @@ namespace {
         counters.logicOnlyPerSec.store(static_cast<std::uint32_t>(
             static_cast<double>(logicOnly - s.seenLogicOnly) / span + 0.5
         ));
+        auto const sceneCulled = counters.sceneSpriteDrawsSkipped.load(std::memory_order_relaxed);
+        counters.sceneCulledPerSec.store(static_cast<std::uint32_t>(
+            static_cast<double>(sceneCulled - s.seenSceneCulled) / span + 0.5
+        ));
         s.seenSpriteSkips = spriteSkips;
         s.seenParticleSkips = idleSkips + offscreenSkips;
         s.seenCapped = capped;
         s.seenLogicOnly = logicOnly;
+        s.seenSceneCulled = sceneCulled;
 
         // Bottleneck hint from this mod's own numbers. workMs is the CPU time of the
         // drawScene call (traversal + GL submission), frameMs is the wall time between
@@ -155,8 +161,9 @@ struct RebornFrameGate : Modify<RebornFrameGate, CCDirector> {
         auto& s = state();
         auto& counters = reborn::counters();
 
-        // Starts the per-frame particle spawn budget before anything can create systems.
-        reborn::particleFrameBegin();
+        // Starts the per-frame viewport snapshot, the transform cache generation and the
+        // particle spawn budget before anything can create or draw a node.
+        reborn::renderFrameBegin();
 
         Clock::time_point const now = Clock::now();
         double const rawDelta = std::chrono::duration<double>(now - s.last).count();

@@ -25,13 +25,25 @@ namespace reborn {
     // 0 = Normal, 1 = Above Normal, 2 = High (Windows only).
     enum class Priority : std::uint8_t { Normal = 0, AboveNormal = 1, High = 2 };
 
+    // How far outside the viewport an object has to be before its draw is skipped.
+    // Conservative uses a generous margin, Aggressive a small one. Off disables the test.
+    enum class CullMode : std::uint8_t { Off = 0, Conservative, Aggressive };
+
     struct Config {
         bool enabled = true;
+
+        // Renderer mode. False = the game's draw path is taken unchanged for every node;
+        // true = Minimum Reborn's draw path (fast-outs + culling) is active.
+        bool rendererOptimized = true;
 
         // Rendering fast paths.
         bool spriteFastPath = true;      // skip draw() for sprites that cannot produce pixels
         bool skipIdleParticles = true;   // skip draw() for particle systems with no live particles
         bool cullOffscreenParticles = true;
+        CullMode particleCull = CullMode::Conservative;
+        CullMode sceneCull = CullMode::Conservative;
+        double particleCullMargin = 96.0;   // world units kept around the viewport
+        double sceneCullMargin = 128.0;
         bool capParticles = true;
         unsigned int particleCap = 128;
         unsigned int spawnBudget = 0;    // particle systems per frame that get a full pool; 0 = off
@@ -70,6 +82,12 @@ namespace reborn {
         std::atomic<std::uint64_t> framesLogicOnly{0};
         std::atomic<std::uint64_t> schedulerUpdates{0};
 
+        // Scene visibility culling. "Examined" counts viewport tests actually performed,
+        // "culled" counts tests that returned "skip this draw".
+        std::atomic<std::uint64_t> sceneSpritesExamined{0};
+        std::atomic<std::uint64_t> sceneSpriteDrawsSkipped{0};
+        std::atomic<std::uint64_t> particleSystemsExamined{0};
+
         std::atomic<std::uint32_t> fps{0};        // drawn frames per second, wall clock
         std::atomic<std::uint32_t> logicFps{0};   // scheduler updates per second
         std::atomic<std::uint8_t> bottleneck{0};  // Bottleneck enum below
@@ -80,6 +98,7 @@ namespace reborn {
         std::atomic<std::uint32_t> particleSkipsPerSec{0};
         std::atomic<std::uint32_t> logicOnlyPerSec{0};
         std::atomic<std::uint32_t> cappedPerSec{0};
+        std::atomic<std::uint32_t> sceneCulledPerSec{0};
     };
 
     // 0 = unknown, 1 = main-thread/draw bound hint, 2 = GPU or outside-draw hint.
