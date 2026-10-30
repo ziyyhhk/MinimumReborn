@@ -1020,10 +1020,10 @@ class $modify(RebornPauseLayer, PauseLayer) {
         menu->addChild(button);
         menu->setPosition({0.f, 0.f});
 
-        // Right edge, level with the native pause row. Eclipse already owns the top-right
-        // corner of the pause menu, so the control lives below it instead of underneath it.
-        auto const win = CCDirector::get()->getWinSize();
-        button->setPosition({win.width - 44.f, win.height / 2.f - 10.f});
+        // Bottom-left corner: the top-right belongs to Eclipse's draggable menu button,
+        // which can sit anywhere along the right edge. The bottom-left is free on the
+        // stock pause layout and stays clear of the P1/P2 indicator.
+        button->setPosition({56.f, 56.f});
         menu->setTouchPriority(-600);
         this->addChild(menu, 100);
     }
