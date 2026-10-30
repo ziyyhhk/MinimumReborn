@@ -198,6 +198,10 @@ collision and physics never see the culling code. Rendering never feeds back int
   (commit `104d69d`) succeeded, 2m. Artifact `MinimumReborn-Windows`:
   `mod.json` v1.1.0, `about.md`, `changelog.md`, `.geode_cache`,
   `ziyyhhk.minimum-reborn.dll` 200,192 bytes, package 79,385 bytes.
+* Run 41009157257 (documentation-only commit `21735f2`) also succeeded and produced the
+  delivered package: same source, `about.md`/`changelog.md` regenerated from the final docs,
+  DLL 200,192 bytes, package 82,232 bytes. CI builds from the two runs are not byte-identical
+  (build metadata), so no binary hash equality is claimed; the source is identical.
 * Verified by inspection only: compile/link on the CI Windows toolchain, Geode package
   structure, and a manual cross-check that every settings key read by `config.cpp` exists in
   `mod.json`. **Not verified at runtime** — Geometry Dash is not installed in this
