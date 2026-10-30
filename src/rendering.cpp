@@ -153,6 +153,15 @@ namespace {
         return std::max(std::hypot(b.ux.x, b.ux.y), std::hypot(b.uy.x, b.uy.y));
     }
 
+    // Squared version of the same number. The per-sprite hot path never needs the square
+    // root: the radius test below compares squared distance against squared radius.
+    double basisScaleSquared(Basis const& b) {
+        return std::max(
+            static_cast<double>(b.ux.x) * b.ux.x + static_cast<double>(b.ux.y) * b.ux.y,
+            static_cast<double>(b.uy.x) * b.uy.x + static_cast<double>(b.uy.y) * b.uy.y
+        );
+    }
+
     CCPoint toWorld(Basis const& b, CCPoint local) {
         return ccp(b.origin.x + local.x * b.ux.x + local.y * b.uy.x,
                    b.origin.y + local.x * b.ux.y + local.y * b.uy.y);
@@ -165,6 +174,19 @@ namespace {
             && cx - radius <= g_view.right + margin
             && cy + radius >= g_view.bottom - margin
             && cy - radius <= g_view.top + margin;
+    }
+
+    // Same test without a square root: distance from the circle center to the expanded
+    // rectangle, squared, against the radius squared.
+    bool circleTouchesSquared(double cx, double cy, double radiusSquared, double margin) {
+        if (!g_view.valid) return true;
+        double const left = g_view.left - margin;
+        double const bottom = g_view.bottom - margin;
+        double const right = g_view.right + margin;
+        double const top = g_view.top + margin;
+        double const dx = cx < left ? left - cx : (cx > right ? cx - right : 0.0);
+        double const dy = cy < bottom ? bottom - cy : (cy > top ? cy - top : 0.0);
+        return dx * dx + dy * dy <= radiusSquared;
     }
 
     // True when the whole sprite is outside the expanded viewport. Conservative by
@@ -185,8 +207,10 @@ namespace {
             std::fabs(static_cast<double>(sprite->getScaleX())),
             std::fabs(static_cast<double>(sprite->getScaleY()))
         );
-        double const radius = std::hypot(size.width, size.height) * scale;
-        if (!std::isfinite(radius)) return false;
+        double const radiusSquared =
+            (static_cast<double>(size.width) * size.width + static_cast<double>(size.height) * size.height)
+            * scale * scale;
+        if (!std::isfinite(radiusSquared)) return false;
 
         Basis basis;
         if (!basisOf(parent, basis)) return false;
@@ -194,7 +218,9 @@ namespace {
         CCPoint const center = toWorld(basis, sprite->getPosition());
         if (!isFinite(center.x) || !isFinite(center.y)) return false;
 
-        return !circleTouches(center.x, center.y, radius * basisScale(basis), margin);
+        return !circleTouchesSquared(
+            center.x, center.y, radiusSquared * basisScaleSquared(basis), margin
+        );
     }
 
     struct Bounds {
@@ -343,7 +369,13 @@ struct SpriteDrawFastPath : Modify<SpriteDrawFastPath, CCSprite> {
         auto const& cfg = reborn::config();
         if (cfg.enabled && cfg.rendererOptimized) {
             if (cfg.spriteFastPath) {
-                if (this->getOpacity() == 0 || this->getScaleX() == 0.f || this->getScaleY() == 0.f) {
+                // getDisplayedOpacity is the opacity the node actually renders with, i.e. its
+                // own opacity multiplied down the parent chain. A whole faded-out layer
+                // therefore stops submitting quads instead of paying a zero-alpha blend for
+                // every sprite in it. Zero vertex alpha contributes nothing under either of
+                // cocos2d's blend modes, so no pixel changes.
+                if (this->getDisplayedOpacity() == 0 || this->getOpacity() == 0
+                    || this->getScaleX() == 0.f || this->getScaleY() == 0.f) {
                     ++reborn::counters().invisibleSpriteDrawsSkipped;
                     return;
                 }
@@ -417,10 +449,11 @@ struct ParticleDrawFastPath : Modify<ParticleDrawFastPath, CCParticleSystemQuad>
     void draw() {
         auto const& cfg = reborn::config();
         if (cfg.enabled && cfg.rendererOptimized) {
-            // Same zero-pixel cases as the sprite fast-out: a system at zero opacity or zero
-            // scale cannot paint anything, so its full quad upload and GL state setup is
-            // wasted. Simulation still updates; only this draw submission is skipped.
-            if (this->getOpacity() == 0 || this->getScaleX() == 0.f || this->getScaleY() == 0.f) {
+            // Same zero-pixel cases as the sprite fast-out: a system at zero rendered
+            // opacity or zero scale cannot paint anything, so its full quad upload and GL
+            // state setup is wasted. Simulation still updates; only this draw is skipped.
+            if (this->getDisplayedOpacity() == 0 || this->getOpacity() == 0
+                || this->getScaleX() == 0.f || this->getScaleY() == 0.f) {
                 ++reborn::counters().invisibleParticleDrawsSkipped;
                 return;
             }

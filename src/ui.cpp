@@ -294,9 +294,10 @@ namespace {
         };
 
         bool init() {
-            // Keep GD's own popup frame. It is opaque, native to the game and does not
-            // depend on packed custom nine-slices, which the packer downsizes.
-            if (!Popup::init(kPopupWidth, kPopupHeight, "square01_001.png")) return false;
+            // Geode's default popup background (GJ_square01.png) is the dark blue panel
+            // Geometry Dash itself uses for level info. It is flat, has no ornate corner
+            // flourishes, and its nine-slice insets come from the Popup base class.
+            if (!Popup::init(kPopupWidth, kPopupHeight)) return false;
             this->setID("minimum-reborn-popup"_spr);
 
             this->buildHeader();
@@ -312,26 +313,19 @@ namespace {
         // Header, tabs, footer
         // -----------------------------------------------------------------------------
         void buildHeader() {
-            if (auto* title = makeLabel("MINIMUM REBORN", "bigFont.fnt", 0.46f)) {
+            if (auto* title = makeLabel("MINIMUM REBORN", "goldFont.fnt", 0.52f)) {
                 title->setAnchorPoint({0.f, 0.5f});
-                m_mainLayer->addChildAtPosition(title, Anchor::Center, ccp(-188.f, 101.f));
+                m_mainLayer->addChildAtPosition(title, Anchor::Center, ccp(-188.f, 97.f));
             }
 
             if (auto* caption = makeLabel("ACTIVE PROFILE", "chatFont.fnt", 0.26f, 145, true)) {
                 caption->setAnchorPoint({1.f, 0.5f});
-                m_mainLayer->addChildAtPosition(caption, Anchor::Center, ccp(148.f, 106.f));
+                m_mainLayer->addChildAtPosition(caption, Anchor::Center, ccp(148.f, 102.f));
             }
             m_headerProfile = makeLabel("Balanced", "goldFont.fnt", 0.36f, 255, true);
             if (m_headerProfile) {
                 m_headerProfile->setAnchorPoint({1.f, 0.5f});
-                m_mainLayer->addChildAtPosition(m_headerProfile, Anchor::Center, ccp(148.f, 94.f));
-            }
-
-            // One-pixel rule keeps the header visually attached to the tab row without
-            // drawing another card behind the content.
-            if (auto* line = CCLayerColor::create(ccc4(255, 255, 255, 30), 356, 1)) {
-                line->setAnchorPoint({0.5f, 0.5f});
-                m_mainLayer->addChildAtPosition(line, Anchor::Center, ccp(0.f, 84.f));
+                m_mainLayer->addChildAtPosition(m_headerProfile, Anchor::Center, ccp(148.f, 90.f));
             }
         }
 
@@ -576,31 +570,35 @@ namespace {
             this->toggleAt(-150.f, 8.f, "skip-idle-particles", "Skip idle particle draws");
             this->toggleAt(-150.f, -16.f, "cap-particles", "Cap particle pool size");
 
-            this->cycleAt(-58.f, -44.f, 170.f, "Particle cap", CycleKind::ParticleCap, "particle-cap",
+            this->cycleAt(-58.f, -40.f, 170.f, "Particle cap", CycleKind::ParticleCap, "particle-cap",
                 this->makeCycleAction(CycleKind::ParticleCap, "particle-cap"));
 #ifdef GEODE_IS_WINDOWS
-            this->toggleAt(86.f, -44.f, "render-gate", "Render gate");
+            this->toggleAt(86.f, -40.f, "render-gate", "Render gate");
 #endif
-            m_liveLabel = textAt("--", 0.f, -58.f, 0.25f, "chatFont.fnt");
+            m_liveLabel = textAt("--", 0.f, -56.f, 0.27f, "chatFont.fnt");
             if (m_liveLabel) m_liveLabel->setAlignment(kCCTextAlignmentCenter);
             textAt(
                 "Draw-only: order, blending, glow and shaders untouched.",
-                0.f, -70.f, 0.22f, "chatFont.fnt", 150
+                0.f, -69.f, 0.2f, "chatFont.fnt", 135
             );
         }
 
         void buildCulling() {
-            this->cycleAt(0.f, 52.f, 250.f, "Particles", CycleKind::Cull, "particle-cull-mode",
+            this->cycleAt(0.f, 58.f, 250.f, "Particles", CycleKind::Cull, "particle-cull-mode",
                 this->makeCycleAction(CycleKind::Cull, "particle-cull-mode"));
-            this->cycleAt(0.f, 28.f, 250.f, "Scene sprites", CycleKind::Cull, "scene-cull",
+            this->cycleAt(0.f, 34.f, 250.f, "Scene sprites", CycleKind::Cull, "scene-cull",
                 this->makeCycleAction(CycleKind::Cull, "scene-cull"));
 
-            m_liveLabel = textAt("--", 0.f, -8.f, 0.34f, "chatFont.fnt");
+            m_liveLabel = textAt("--", 0.f, -2.f, 0.36f, "chatFont.fnt");
             if (m_liveLabel) m_liveLabel->setAlignment(kCCTextAlignmentCenter);
 
             textAt(
                 "Draw-only. Simulation, physics, collisions and triggers are untouched.",
-                0.f, -60.f, 0.26f, "chatFont.fnt", 160
+                0.f, -40.f, 0.28f, "chatFont.fnt", 175
+            );
+            textAt(
+                "GD batches level objects, so in-level culling mostly covers UI and effect sprites.",
+                0.f, -54.f, 0.26f, "chatFont.fnt", 150
             );
         }
 
@@ -617,45 +615,49 @@ namespace {
                 0.32f, "chatFont.fnt", 160, true);
 #endif
 
-            m_liveLabel = textAt("--", 0.f, -54.f, 0.27f, "chatFont.fnt");
+            m_liveLabel = textAt("--", 0.f, -48.f, 0.34f, "chatFont.fnt");
             if (m_liveLabel) m_liveLabel->setAlignment(kCCTextAlignmentCenter);
             textAt(
                 "Ordering only; game input, physics and the FPS cap are unchanged.",
-                0.f, -67.f, 0.24f, "chatFont.fnt", 145
+                0.f, -66.f, 0.27f, "chatFont.fnt", 150
             );
         }
 
         void buildEditor() {
-            this->toggleAt(-150.f, 52.f, "editor-culling", "Editor visibility and particle culling");
-            this->cycleAt(-24.f, 26.f, 240.f, "Editor mode", CycleKind::EditorCull, "editor-cull-mode",
+            this->toggleAt(-150.f, 58.f, "editor-culling", "Editor visibility and particle culling");
+            this->cycleAt(-24.f, 32.f, 240.f, "Editor mode", CycleKind::EditorCull, "editor-cull-mode",
                 this->makeCycleAction(CycleKind::EditorCull, "editor-cull-mode"));
 
-            m_liveLabel = textAt("--", 0.f, -14.f, 0.33f, "chatFont.fnt");
+            m_liveLabel = textAt("--", 0.f, -8.f, 0.35f, "chatFont.fnt");
             if (m_liveLabel) m_liveLabel->setAlignment(kCCTextAlignmentCenter);
 
             textAt(
-                "No level data, selection or saving is changed.",
-                0.f, -58.f, 0.25f, "chatFont.fnt", 155
+                "Draw-only. Level data, selection, dragging, undo and saving are unchanged.",
+                0.f, -44.f, 0.27f, "chatFont.fnt", 160
+            );
+            textAt(
+                "Open the editor to populate these counters.",
+                0.f, -60.f, 0.25f, "chatFont.fnt", 135
             );
         }
 
         void buildDiagnostics() {
-            this->toggleAt(-150.f, 52.f, "show-overlay", "Performance overlay");
-            this->cycleAt(-30.f, 26.f, 220.f, "Detail", CycleKind::Detail, "overlay-detail",
+            this->toggleAt(-150.f, 58.f, "show-overlay", "Performance overlay");
+            this->cycleAt(-30.f, 32.f, 220.f, "Detail", CycleKind::Detail, "overlay-detail",
                 this->makeCycleAction(CycleKind::Detail, "overlay-detail"));
-            this->cycleAt(-30.f, 2.f, 220.f, "Corner", CycleKind::Corner, "overlay-corner",
+            this->cycleAt(-30.f, 8.f, 220.f, "Corner", CycleKind::Corner, "overlay-corner",
                 this->makeCycleAction(CycleKind::Corner, "overlay-corner"));
 
-            auto bench = this->buttonAt(-64.f, -26.f, 140.f, 20.f, "Benchmark",
-                [this]() { this->toggleBenchmark(); }, false, 0.33f);
+            auto bench = this->buttonAt(0.f, -22.f, 170.f, 20.f, "Benchmark",
+                [this]() { this->toggleBenchmark(); }, false, 0.34f);
             m_benchLabel = bench.label;
 
-            m_liveLabel = textAt("--", 0.f, -50.f, 0.26f, "chatFont.fnt");
+            m_liveLabel = textAt("--", 0.f, -46.f, 0.32f, "chatFont.fnt");
             if (m_liveLabel) m_liveLabel->setAlignment(kCCTextAlignmentCenter);
 
             textAt(
                 "draw ms is CPU time inside drawScene, not GPU time.",
-                0.f, -70.f, 0.23f, "chatFont.fnt", 150
+                0.f, -64.f, 0.26f, "chatFont.fnt", 150
             );
         }
 
