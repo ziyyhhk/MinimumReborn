@@ -136,8 +136,23 @@ namespace {
 
     // Direct-mapped, rebuilt every frame because transforms change with the camera. A miss
     // overwrites the slot; nothing grows and nothing is kept across frames.
-    constexpr unsigned kTransformSlots = 256;
+    //
+    // 256 slots proved too few: a busy scene walks past the cache line of a parent that is
+    // visited again later in the same frame, and every one of those misses costs three
+    // convertToWorldSpace calls - the mod's own worst source of extra frame time, in the path
+    // that is supposed to remove frame time. Two changes: more slots, and a one-entry memo for
+    // the overwhelmingly common case of consecutive siblings sharing a parent, which makes the
+    // typical cost of the test a single pointer compare.
+    constexpr unsigned kTransformSlots = 1024;
     Slot g_slots[kTransformSlots];
+
+    struct Memo {
+        CCNode const* node = nullptr;
+        Basis basis;
+    };
+
+    Memo g_memo;
+    unsigned g_memoFrame = 0;
 
     bool isFinite(float value) {
         return std::isfinite(value);
@@ -146,10 +161,18 @@ namespace {
     bool basisOf(CCNode* node, Basis& out) {
         if (!node) return false;
 
+        if (g_memoFrame == g_frameId && g_memo.node == node) {
+            out = g_memo.basis;
+            return true;
+        }
+
         auto const key = reinterpret_cast<std::uintptr_t>(node);
-        Slot& slot = g_slots[(key >> 4) % kTransformSlots];
+        Slot& slot = g_slots[(key >> 4u) % kTransformSlots];
         if (slot.frame == g_frameId && slot.node == node) {
             out = slot.basis;
+            g_memo.node = node;
+            g_memo.basis = slot.basis;
+            g_memoFrame = g_frameId;
             return true;
         }
 
@@ -173,6 +196,9 @@ namespace {
         slot.node = node;
         slot.frame = g_frameId;
         slot.basis = b;
+        g_memo.node = node;
+        g_memo.basis = b;
+        g_memoFrame = g_frameId;
         out = b;
         return true;
     }

@@ -144,7 +144,12 @@ namespace reborn {
             mod->setSettingValue<bool>("cap-particles", true);
             mod->setSettingValue<int64_t>("particle-cap", static_cast<int64_t>(values->particleCap));
 #ifdef GEODE_IS_WINDOWS
-            mod->setSettingValue<bool>("background-throttle", true);
+            // Background throttle is deliberately NOT turned on by any profile. It drops the
+            // game to Background FPS whenever the window is not in the foreground, and the
+            // frame that follows coming back is a visible hitch - which reads exactly like the
+            // "lag spikes" users report. The setting stays available and off by default; a
+            // profile must not trade a steady frame rate for a stutter on focus change.
+            mod->setSettingValue<bool>("background-throttle", false);
             mod->setSettingValue<int64_t>("background-fps", values->backgroundFps);
 #endif
             log::info("Minimum Reborn: applied profile '{}' (particle cap {})", values->name, values->particleCap);

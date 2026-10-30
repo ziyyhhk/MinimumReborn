@@ -81,6 +81,36 @@ namespace reborn {
             return avgWorst > 0.0 ? 1000.0 / avgWorst : 0.0;
         }
 
+        // Frames slower than the threshold, and the single worst frame, over the newest n.
+        // A lag spike is by definition not visible in an average, so it gets its own numbers.
+        std::size_t spikeCount(std::size_t n, double thresholdMs) const {
+            if (m_count == 0) return 0;
+            n = std::min(n, m_count);
+            std::size_t spikes = 0;
+            for (std::size_t i = 0; i < n; ++i) {
+                if (at(m_frame, i) > thresholdMs) ++spikes;
+            }
+            return spikes;
+        }
+
+        double worstFrameMs(std::size_t n) const {
+            if (m_count == 0) return 0.0;
+            n = std::min(n, m_count);
+            double worst = 0.0;
+            for (std::size_t i = 0; i < n; ++i) worst = std::max(worst, at(m_frame, i));
+            return worst;
+        }
+
+        // Worst single drawScene time in the window, so a spike can be attributed to the draw
+        // path rather than guessed at.
+        double worstWorkMs(std::size_t n) const {
+            if (m_count == 0) return 0.0;
+            n = std::min(n, m_count);
+            double worst = 0.0;
+            for (std::size_t i = 0; i < n; ++i) worst = std::max(worst, at(m_work, i));
+            return worst;
+        }
+
         // 95th percentile frame time in ms (the "slow frames" the average hides).
         double percentileFrameMs(std::size_t n, double percentile) const {
             if (m_count == 0) return 0.0;

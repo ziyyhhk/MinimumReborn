@@ -125,8 +125,8 @@ namespace {
                     "scene %u/%u/s | sprite fast-out %u/s | particles %u/%u/s | editor %u/s | capped %u/s",
                     cfg.enabled ? "" : "(OFF) ", fps,
                     counters.throttled.load(std::memory_order_relaxed) ? " (background)" : "",
-                    avgMs, p95Ms, lowText,
-                    logic, workMs,
+                    avgMs, p95Ms, lowText, stats.spikeCount(240, 25.0),
+                    logic, workMs, stats.worstWorkMs(240),
                     bottleneckLabel(static_cast<reborn::Bottleneck>(counters.bottleneck.load(std::memory_order_relaxed))),
                     cfg.rendererOptimized ? "optimized" : "engine",
                     counters.sceneCulledPerSec.load(std::memory_order_relaxed),
@@ -792,7 +792,7 @@ namespace {
             cycleRow(2, "Overlay corner", CycleKind::Corner, "overlay-corner");
             headingRow(3, "DIAGNOSTICS - MEASURED, NOT ESTIMATED");
             statRow(4, "Frame", "diag-frame");
-            statRow(5, "CPU draw time", "diag-cpu");
+            statRow(5, "Spikes / draw cost", "diag-spikes");
             auto bench = this->pillAt(0.f, rowY(6), 200.f, "Benchmark",
                 [this]() { this->toggleBenchmark(); }, 0.34f);
             m_benchLabel = bench.label;
@@ -1036,13 +1036,16 @@ namespace {
                               u64(counters.editorParticlesExamined));
             }
             else if (id == "diag-frame") {
-                std::snprintf(text, sizeof(text), "%u FPS   avg %.1f   p95 %.1f ms   1%% low %s",
+                std::snprintf(text, sizeof(text), "%u FPS   avg %.1f   p95 %.1f   worst %.1f ms",
                               fps, stats.averageFrameMs(120), stats.percentileFrameMs(120, 0.95),
-                              intOf(stats.onePercentLowFps(240)).c_str());
+                              stats.worstFrameMs(240));
             }
-            else if (id == "diag-cpu") {
-                std::snprintf(text, sizeof(text), "%.2f ms in drawScene   jitter %.2f ms",
-                              stats.averageWorkMs(60), stats.jitterMs(120));
+            else if (id == "diag-spikes") {
+                // A spike is only attributable to the draw path if drawScene itself got long.
+                // These two numbers answer "is the mod the cause" without guessing.
+                std::snprintf(text, sizeof(text), "%zu over 25 ms   draw avg %.2f   worst %.2f ms",
+                              stats.spikeCount(240, 25.0), stats.averageWorkMs(120),
+                              stats.worstWorkMs(240));
             }
             else {
                 std::snprintf(text, sizeof(text), "--");

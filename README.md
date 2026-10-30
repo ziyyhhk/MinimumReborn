@@ -4,7 +4,7 @@ A rendering-focused optimization mod for Geometry Dash 2.2081, built with C++20 
 Geode SDK. It is a successor to [Minimum](https://github.com/ziyyhhk/Minimum), with the
 render path as the main subject rather than a settings collection.
 
-**Status: v1.4.0, built by GitHub Actions and run in Geometry Dash on a Windows laptop.**
+**Status: v1.4.2, built by GitHub Actions and run in Geometry Dash on a Windows laptop.**
 The runtime evidence in this README and in `DEVELOPMENT_REPORT.md` comes from that machine,
 not from estimates. It also changed the design: GD batches its level objects, so the
 per-sprite scene cull cannot see them. Scene culling is opt-in and off in the default
@@ -369,3 +369,32 @@ Windows-specific features (1 ms timer resolution, background draw throttle, proc
 render gate) sit behind `GEODE_IS_WINDOWS` in the source and are hidden in the panel on other
 platforms, so the rest of the mod is written to compile elsewhere - but no Android or iOS
 binary has been built or run here, so this package does not claim mobile support.
+
+
+## 10. What this mod cannot fix (and why "Performance" still stutters)
+
+Steady frame rate and spikes are different problems, and only some of them live in the draw
+path this mod touches.
+
+* **The FPS cap.** Geometry Dash caps the loop (60/90/144/240 by setting). While the cap
+  holds, no renderer can report a higher FPS; the only honest numbers are frame time, CPU
+  time inside `drawScene`, and how much draw work is not submitted. Section 9 shows exactly
+  that measurement: identical FPS, +0.07 ms CPU per frame, 1,830 zero-pixel draws removed.
+* **Level streaming and object creation.** GD builds objects, textures and particle systems as
+  a level loads and as it scrolls. Those allocations, plus shader program creation on first
+  use of a texture, are the usual source of a one-frame hitch. This mod does not run during
+  them and cannot shorten them; the pool cap only makes *later* particle systems smaller.
+* **Other mods.** 51 mods are installed on this machine. One of them (BetterEdit
+  v6.10.0-beta.6) crashes the game when the editor pause menu opens, and its stack trace
+  contains no frame from this mod. A mod that hooks per-frame drawing can also add cost that
+  shows up as spikes; the new spike counters on the Diagnostics page are how you tell the two
+  apart: if `worst draw` is small while `worst frame` is large, the stall is outside the draw
+  path.
+* **GPU and driver work.** There is no GPU timer here. Skipping a draw removes CPU-side setup
+  and the triangles that would have been submitted, but a fragment-bound frame (large glow,
+  full-screen effects, high resolution) is not something this mod can measure, let alone fix.
+* **What it does help with, concretely**: hidden and off-screen unbatched sprites and particle
+  systems stop paying shader/attribute/texture setup and a draw call; idle particle systems
+  stop uploading an empty quad buffer; particle pools are bounded so a burst allocates less;
+  and the mod's own per-frame bookkeeping runs after the game's update and after the scene
+  draw when No Additional Input Delay is on.
