@@ -400,23 +400,25 @@ namespace {
         void buildHeader() {
             CCNode* root = m_mainLayer;
 
-            if (auto* icon = CCSprite::create("logo-128.png"_spr)) {
+            // icon-button.png is the MK badge that the pause button already loads from the
+            // package, so this is the asset whose loading is proven at runtime.
+            if (auto* icon = CCSprite::create("icon-button.png"_spr)) {
                 float const h = icon->getContentSize().height;
                 icon->setScale(h > 0.f ? kIconSize / h : 1.f);
-                icon->setPosition({kLeft + kIconSize / 2.f, kHeaderCenterY - 1.f});
+                icon->setPosition({kCX + kLeft + kIconSize / 2.f, kCY + kHeaderCenterY - 5.f});
                 root->addChild(icon);
             }
 
             float const textX = kLeft + kIconSize + 8.f;
             addLabel(root, "MINIMUM REBORN", "bigFont.fnt", 0.42f, kTextPrimary, 255,
-                     textX, kHeaderCenterY + 7.f, 1);
+                     textX, kHeaderCenterY - 1.f, 1);
             addLabel(root, "Performance and rendering", "chatFont.fnt", 0.3f, kTextMuted, 200,
-                     textX, kHeaderCenterY - 7.f, 1);
+                     textX, kHeaderCenterY - 11.f, 1);
 
             addLabel(root, "PROFILE", "chatFont.fnt", 0.26f, kTextMuted, 190,
-                     kProfileRightX, kHeaderCenterY + 9.f, 2);
+                     kProfileRightX, kHeaderCenterY - 2.f, 2);
             m_headerProfile = addLabel(root, "Balanced", "goldFont.fnt", 0.42f, kTextPrimary,
-                                       255, kProfileRightX, kHeaderCenterY - 5.f, 2);
+                                       255, kProfileRightX, kHeaderCenterY - 12.f, 2);
         }
 
         void buildNav() {
@@ -443,9 +445,13 @@ namespace {
             for (int i = 0; i < static_cast<int>(PageCount); ++i) {
                 auto* holder = CCNode::create();
                 holder->setContentSize({kTabWidth, kNavH - 6.f});
-                auto* label = addLabel(holder, kPageNames[i], "bigFont.fnt", 0.33f, kTextMuted,
-                                       210, kTabWidth / 2.f, (kNavH - 6.f) / 2.f, 0);
-                if (label) fitLabel(label, 0.33f, kTabWidth - 8.f);
+                auto* label = makeLabel(kPageNames[i], "bigFont.fnt", 0.33f, 210, false);
+                if (label) {
+                    label->setColor(kTextMuted);
+                    fitLabel(label, 0.33f, kTabWidth - 8.f);
+                    label->setPosition({kTabWidth / 2.f, (kNavH - 6.f) / 2.f});
+                    holder->addChild(label);
+                }
 
                 auto* item = CCMenuItemSpriteExtra::create(
                     holder, this, menu_selector(RebornPopup::onTab)
