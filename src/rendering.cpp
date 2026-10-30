@@ -74,6 +74,34 @@ using namespace geode::prelude;
 // one and is meant for checking how much draw work the culling actually removes. Both are
 // draw-only.
 //
+// ---------------------------------------------------------------------------------------
+// 6. What "shader culling" can honestly mean here
+// ---------------------------------------------------------------------------------------
+// cocos2d-x sets up the shader per node inside draw(): CCGLProgram activation, the vertex
+// attribute pointers, the texture bind and only then the draw call. Every skip in this file
+// returns *before* that sequence, so the work that is actually avoided per skipped node is:
+//   * the program activation and uniform setup (texture, GL state),
+//   * the vertex attribute pointers,
+//   * the draw call itself (and for a particle system, the per-frame quad buffer rebuild),
+//   * the fragment work those triangles would have produced.
+// That is the defensible version of "avoiding shader setup for objects that will not be
+// rendered", and it is measured: the counters on the Render and Culling pages only move when
+// a draw() call is really not submitted.
+//
+// What is NOT done, because the engine does not allow it safely from a mod:
+//   * no shader is compiled, replaced or re-bound, and no GL program cache is kept - the
+//     bindings GD uses are per-node and can change under a batch, so caching them would
+//     change state that other nodes depend on;
+//   * no draw is reordered, merged or re-batched, so blending, glow, clipping and z-order
+//     stay exactly as the game produced them;
+//   * no object is culled on its center alone - sprites use a rotation-safe circle around
+//     the node position covering the whole diagonal, particle systems add their worst-case
+//     reach (speed, life, acceleration, radius, position variance and particle size) scaled
+//     to world units, and both keep a margin;
+//   * batched level objects are not touched: CCSpriteBatchNode submits every child in one
+//     call and never runs the per-sprite path, so a mod cannot drop individual quads from it
+//     without rewriting the atlas buffer, which would break the next frame's cached geometry.
+//
 // What this is NOT: a replacement renderer. Draw order, blending, glow, clipping, shaders and
 // texture state are untouched because every kept draw still goes through the original
 // cocos2d function in the original order.
@@ -289,6 +317,39 @@ namespace {
         return !circleTouches(world.x, world.y, reach, margin);
     }
 
+    // Hot-path counters.
+    //
+    // The draw hooks run once per sprite and once per particle system, which in a busy level
+    // is tens of thousands of times per frame. A std::atomic increment is a locked read-
+    // modify-write, so counting per object would make the *instrumentation* one of the more
+    // expensive things in the frame - exactly what an optimization layer must not do. The
+    // hooks therefore bump plain 64-bit integers here (main thread only, no tearing concern)
+    // and renderFrameEnd() folds them into the published atomics once per frame.
+    struct HotCounts {
+        std::uint64_t invisibleSprites = 0;
+        std::uint64_t sceneExamined = 0;
+        std::uint64_t sceneSkipped = 0;
+        std::uint64_t particleExamined = 0;
+        std::uint64_t particleOffscreenSkipped = 0;
+        std::uint64_t particleIdleSkipped = 0;
+        std::uint64_t particleInvisibleSkipped = 0;
+        std::uint64_t editorSpritesExamined = 0;
+        std::uint64_t editorSpritesSkipped = 0;
+        std::uint64_t editorParticlesExamined = 0;
+        std::uint64_t editorParticlesSkipped = 0;
+        std::uint64_t batchDraws = 0;
+        std::uint64_t batchQuads = 0;
+        std::uint64_t emptyBatches = 0;
+    };
+
+    HotCounts g_hot;
+
+    void add(std::atomic<std::uint64_t>& target, std::uint64_t& source) {
+        if (source == 0) return;
+        target.fetch_add(source, std::memory_order_relaxed);
+        source = 0;
+    }
+
     std::uint64_t createdEarlierThisFrame() {
         std::uint64_t const total = reborn::counters().particleSystemsCreated.load(std::memory_order_relaxed);
         return total >= g_frameCreatedBase ? total - g_frameCreatedBase : 0;
@@ -344,6 +405,24 @@ namespace reborn {
         g_view.valid = true;
     }
 
+    void renderFrameEnd() {
+        auto& c = counters();
+        add(c.invisibleSpriteDrawsSkipped, g_hot.invisibleSprites);
+        add(c.sceneSpritesExamined, g_hot.sceneExamined);
+        add(c.sceneSpriteDrawsSkipped, g_hot.sceneSkipped);
+        add(c.particleSystemsExamined, g_hot.particleExamined);
+        add(c.offscreenParticleDrawsSkipped, g_hot.particleOffscreenSkipped);
+        add(c.idleParticleDrawsSkipped, g_hot.particleIdleSkipped);
+        add(c.invisibleParticleDrawsSkipped, g_hot.particleInvisibleSkipped);
+        add(c.editorSpritesExamined, g_hot.editorSpritesExamined);
+        add(c.editorSpriteDrawsSkipped, g_hot.editorSpritesSkipped);
+        add(c.editorParticlesExamined, g_hot.editorParticlesExamined);
+        add(c.editorParticleDrawsSkipped, g_hot.editorParticlesSkipped);
+        add(c.batchDraws, g_hot.batchDraws);
+        add(c.batchQuads, g_hot.batchQuads);
+        add(c.emptyBatchDrawsSkipped, g_hot.emptyBatches);
+    }
+
     unsigned int effectiveParticleCap();  // defined in config.cpp (adaptive step included)
 
     bool inEditor() {
@@ -376,12 +455,12 @@ struct SpriteDrawFastPath : Modify<SpriteDrawFastPath, CCSprite> {
                 // cocos2d's blend modes, so no pixel changes.
                 if (this->getDisplayedOpacity() == 0 || this->getOpacity() == 0
                     || this->getScaleX() == 0.f || this->getScaleY() == 0.f) {
-                    ++reborn::counters().invisibleSpriteDrawsSkipped;
+                    ++g_hot.invisibleSprites;
                     return;
                 }
                 CCSize const size = this->getContentSize();
                 if (size.width <= 0.f || size.height <= 0.f) {
-                    ++reborn::counters().invisibleSpriteDrawsSkipped;
+                    ++g_hot.invisibleSprites;
                     return;
                 }
             }
@@ -389,17 +468,17 @@ struct SpriteDrawFastPath : Modify<SpriteDrawFastPath, CCSprite> {
                 // The editor has its own policy. Object data, selection and serialization are
                 // never involved: this only decides whether a sprite's draw is submitted.
                 if (cfg.editorCulling && cfg.editorCull != reborn::CullMode::Off) {
-                    ++reborn::counters().editorSpritesExamined;
+                    ++g_hot.editorSpritesExamined;
                     if (spriteOffScreen(this, cfg.editorCullMargin)) {
-                        ++reborn::counters().editorSpriteDrawsSkipped;
+                        ++g_hot.editorSpritesSkipped;
                         return;
                     }
                 }
             }
             else if (cfg.sceneCull != reborn::CullMode::Off) {
-                ++reborn::counters().sceneSpritesExamined;
+                ++g_hot.sceneExamined;
                 if (spriteOffScreen(this, cfg.sceneCullMargin)) {
-                    ++reborn::counters().sceneSpriteDrawsSkipped;
+                    ++g_hot.sceneSkipped;
                     return;
                 }
             }
@@ -416,15 +495,15 @@ struct BatchNodeTelemetry : Modify<BatchNodeTelemetry, CCSpriteBatchNode> {
     void draw() {
         auto const& cfg = reborn::config();
         if (cfg.enabled && cfg.rendererOptimized) {
-            ++reborn::counters().batchDraws;
+            ++g_hot.batchDraws;
             if (m_pobTextureAtlas) {
                 unsigned int const quads = m_pobTextureAtlas->getTotalQuads();
-                reborn::counters().batchQuads.fetch_add(quads, std::memory_order_relaxed);
+                g_hot.batchQuads += quads;
                 // Empty batches are common while effects expire. The original draw would bind
                 // the program and texture and then submit zero quads; skipping that changes
                 // no pixels and no state anyone reads afterwards (draw(), not visit()).
                 if (quads == 0) {
-                    ++reborn::counters().emptyBatchDrawsSkipped;
+                    ++g_hot.emptyBatches;
                     return;
                 }
             }
@@ -455,26 +534,26 @@ struct ParticleDrawFastPath : Modify<ParticleDrawFastPath, CCParticleSystemQuad>
             // inherited-opacity case is covered for sprites, whose binding exposes
             // getDisplayedOpacity; CCNode's binding here does not.
             if (this->getOpacity() == 0 || this->getScaleX() == 0.f || this->getScaleY() == 0.f) {
-                ++reborn::counters().invisibleParticleDrawsSkipped;
+                ++g_hot.particleInvisibleSkipped;
                 return;
             }
             if (cfg.skipIdleParticles && m_uParticleCount == 0) {
-                ++reborn::counters().idleParticleDrawsSkipped;
+                ++g_hot.particleIdleSkipped;
                 return;
             }
             if (m_uParticleCount > 0 && reborn::inEditor()) {
                 if (cfg.editorCulling && cfg.editorCull != reborn::CullMode::Off) {
-                    ++reborn::counters().editorParticlesExamined;
+                    ++g_hot.editorParticlesExamined;
                     if (particleOffScreen(this, cfg.editorCullMargin)) {
-                        ++reborn::counters().editorParticleDrawsSkipped;
+                        ++g_hot.editorParticlesSkipped;
                         return;
                     }
                 }
             }
             else if (cfg.cullOffscreenParticles && cfg.particleCull != reborn::CullMode::Off && m_uParticleCount > 0) {
-                ++reborn::counters().particleSystemsExamined;
+                ++g_hot.particleExamined;
                 if (particleOffScreen(this, cfg.particleCullMargin)) {
-                    ++reborn::counters().offscreenParticleDrawsSkipped;
+                    ++g_hot.particleOffscreenSkipped;
                     return;
                 }
             }

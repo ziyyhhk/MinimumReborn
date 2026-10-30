@@ -257,6 +257,7 @@ struct RebornFrameGate : Modify<RebornFrameGate, CCDirector> {
                     this->getScheduler()->update(this->getDeltaTime());
                 }
                 ++counters.framesLogicOnly;
+                reborn::renderFrameEnd();
                 if (cfg.noInputDelay) {
                     // Aggregation and the foreground probe happen after the game's update.
                     reborn::processHasForeground(Clock::now());
@@ -280,6 +281,9 @@ struct RebornFrameGate : Modify<RebornFrameGate, CCDirector> {
 
         ++counters.framesDrawn;
         ++s.windowDrawn;
+        // Fold this frame's draw-path counters into the published atomics (one pass per
+        // frame instead of one locked increment per sprite).
+        reborn::renderFrameEnd();
 
         if (measurable) {
             double const frameMs = std::chrono::duration<double, std::milli>(drawStart - s.lastDrawn).count();

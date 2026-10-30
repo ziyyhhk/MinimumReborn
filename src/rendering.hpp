@@ -16,6 +16,11 @@ namespace reborn {
     // id for the transform cache and starts this frame's particle spawn budget.
     void renderFrameBegin();
 
+    // Called once at the end of every frame (drawn or skipped). Publishes the hot-path
+    // counters that the draw hooks accumulate locally, so the per-object cost is an ordinary
+    // integer increment and the atomic traffic is bounded to one pass per frame.
+    void renderFrameEnd();
+
     // True when the current frame belongs to the level editor scene. Set once per frame.
     bool inEditor();
 
