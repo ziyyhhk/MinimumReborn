@@ -349,8 +349,8 @@ skips. The four v1.2.0 runs above were taken before the change.
 
 ## 22. Package size investigation
 
-The user asked why the `.geode` is small. Inspection of the delivered v1.2.1 artifact
-(86,352 bytes packed, 241,101 bytes unpacked):
+The user asked why the `.geode` is small. The v1.2.1 artifact from run 41012157311 measured
+86,352 bytes packed / 241,101 bytes unpacked:
 
 ```
 .geode_cache 30 B | about.md 17,365 B | changelog.md 4,247 B | mod.json 11,075 B
@@ -358,7 +358,8 @@ ziyyhhk.minimum-reborn.dll 208,384 B
 ```
 
 The v1.2.0 artifact was 84,318 bytes packed (236,025 unpacked) with the same 208,384-byte DLL;
-the difference is the regenerated `about.md`/`changelog.md`/`mod.json`.
+the difference is the regenerated `about.md`/`changelog.md`/`mod.json`. Doc-only rebuilds
+change those text sizes by a few hundred bytes; the DLL is unchanged by documentation.
 
 All seven sources listed in `CMakeLists.txt` (`main`, `config`, `rendering`, `frame_gate`,
 `benchmark`, `system_tuning`, `ui`) are compiled into that DLL; there are no other object files

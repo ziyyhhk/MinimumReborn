@@ -230,11 +230,12 @@ Build evidence:
 * Workflow runs for v1.2.0 ([41011043806](https://github.com/ziyyhhk/MinimumReborn/actions/runs/41011043806))
   and v1.2.1 ([41012157311](https://github.com/ziyyhhk/MinimumReborn/actions/runs/41012157311))
   completed green on Windows and uploaded **MinimumReborn-Windows**. The v1.2.1 package was
-  downloaded and inspected: `mod.json` v1.2.1, `about.md` 17,365 B, `changelog.md` 4,247 B,
-  `.geode_cache`, and `ziyyhhk.minimum-reborn.dll` 208,384 bytes (Release, LTO). Archive size
-  86,352 bytes packed / 241,101 bytes unpacked. The small size is the point: one DLL plus
-  text; cocos2d, Geode and the C++ runtime are provided by the game install, not bundled.
-  Every source file in `CMakeLists.txt` is compiled; nothing is inflated to look substantial.
+  downloaded and inspected: `mod.json` v1.2.1, `about.md`, `changelog.md`, `.geode_cache`,
+  and `ziyyhhk.minimum-reborn.dll` 208,384 bytes (Release, LTO). The archive measured
+  86,352 bytes packed / 241,101 bytes unpacked; doc-only rebuilds change the text by a few
+  hundred bytes, the DLL does not. The small size is the point: one DLL plus text; cocos2d,
+  Geode and the C++ runtime are provided by the game install, not bundled. Every source file
+  in `CMakeLists.txt` is compiled; nothing is inflated to look substantial.
 * Earlier runs are visible in Actions; run 41008194965 failed to compile
   (`CCSprite::getBoundingBox` is not exposed by the bindings) and was fixed in 41008425934.
 
