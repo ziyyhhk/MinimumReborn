@@ -658,7 +658,11 @@ struct BatchNodeTelemetry : Modify<BatchNodeTelemetry, CCSpriteBatchNode> {
                 }
                 if (g_flags.batchCull) {
                     ++g_hot.batchMeasured;
-                    if (batchOffScreen(this, m_pobTextureAtlas, g_flags.sceneMargin)) {
+                    // Floor of 64 world units even when the scene cull is off: the box is
+                    // measured for this frame, but a batch can still be entering the screen
+                    // at speed, and a zero margin would make it pop in one frame late.
+                    if (batchOffScreen(this, m_pobTextureAtlas,
+                                       std::max(64.0, g_flags.sceneMargin))) {
                         ++g_hot.batchCulled;
                         return;
                     }
