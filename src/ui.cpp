@@ -181,10 +181,10 @@ namespace {
     // ---------------------------------------------------------------------------------
     // Shared visual helpers
     // ---------------------------------------------------------------------------------
-    constexpr float kPopupWidth = 540.f;
-    constexpr float kPopupHeight = 350.f;
-    constexpr float kPageWidth = 500.f;
-    constexpr float kPageHeight = 224.f;
+    constexpr float kPopupWidth = 500.f;
+    constexpr float kPopupHeight = 320.f;
+    constexpr float kPageWidth = 480.f;
+    constexpr float kPageHeight = 216.f;
     constexpr float kButtonHeight = 23.f;
 
     void fitLabel(CCLabelBMFont* label, float maxScale, float room) {
@@ -315,25 +315,25 @@ namespace {
             if (logo) {
                 float const h = logo->getContentSize().height;
                 logo->setScale(h > 0.f ? 42.f / h : 1.f);
-                m_mainLayer->addChildAtPosition(logo, Anchor::Center, ccp(-235.f, 145.f));
+                m_mainLayer->addChildAtPosition(logo, Anchor::Center, ccp(-225.f, 137.f));
             }
 
             if (auto* title = makeLabel("MINIMUM REBORN", "bigFont.fnt", 0.62f)) {
                 title->setAnchorPoint({0.f, 0.5f});
-                m_mainLayer->addChildAtPosition(title, Anchor::Center, ccp(-204.f, 151.f));
+                m_mainLayer->addChildAtPosition(title, Anchor::Center, ccp(-194.f, 141.f));
             }
             if (auto* sub = makeLabel("draw-only optimization  |  v1.3.1", "chatFont.fnt", 0.42f, 190, true)) {
-                m_mainLayer->addChildAtPosition(sub, Anchor::Center, ccp(-203.f, 137.f));
+                m_mainLayer->addChildAtPosition(sub, Anchor::Center, ccp(-193.f, 127.f));
             }
 
             if (auto* caption = makeLabel("ACTIVE PROFILE", "chatFont.fnt", 0.34f, 150, true)) {
                 caption->setAnchorPoint({1.f, 0.5f});
-                m_mainLayer->addChildAtPosition(caption, Anchor::Center, ccp(200.f, 154.f));
+                m_mainLayer->addChildAtPosition(caption, Anchor::Center, ccp(220.f, 143.f));
             }
             m_headerProfile = makeLabel("Balanced", "goldFont.fnt", 0.46f, 255, true);
             if (m_headerProfile) {
                 m_headerProfile->setAnchorPoint({1.f, 0.5f});
-                m_mainLayer->addChildAtPosition(m_headerProfile, Anchor::Center, ccp(200.f, 141.f));
+                m_mainLayer->addChildAtPosition(m_headerProfile, Anchor::Center, ccp(220.f, 129.f));
             }
         }
 
@@ -342,7 +342,7 @@ namespace {
             m_tabMenu->setPosition({kPopupWidth / 2.f, kPopupHeight / 2.f});
             m_mainLayer->addChild(m_tabMenu, 10);
 
-            float const width = 78.f;
+            float const width = 74.f;
             float const gap = 3.f;
             float const total = 6.f * width + 5.f * gap;
             float x = -total / 2.f + width / 2.f;
@@ -364,7 +364,7 @@ namespace {
                 auto* item = CCMenuItemSpriteExtra::create(holder, this, menu_selector(RebornPopup::onTab));
                 item->setTag(i);
                 m_tabMenu->addChild(item);
-                item->setPosition({x + static_cast<float>(i) * (width + gap), 112.f});
+                item->setPosition({x + static_cast<float>(i) * (width + gap), 100.f});
                 m_tabBackgrounds.push_back(bg);
                 m_tabLabels.push_back(label);
             }
@@ -395,7 +395,7 @@ namespace {
             }
             auto* item = CCMenuItemSpriteExtra::create(holder, this, selector);
             m_footerMenu->addChild(item);
-            item->setPosition({x, -154.f});
+            item->setPosition({x, -145.f});
         }
 
         void onTab(CCObject* sender) {
@@ -440,7 +440,7 @@ namespace {
             m_pageRoot = CCNode::create();
             m_pageRoot->setContentSize({kPageWidth, kPageHeight});
             m_pageRoot->setAnchorPoint({0.5f, 0.5f});
-            m_mainLayer->addChildAtPosition(m_pageRoot, Anchor::Center, ccp(0.f, -16.f));
+            m_mainLayer->addChildAtPosition(m_pageRoot, Anchor::Center, ccp(0.f, -18.f));
 
             if (auto* card = makeCard(kPageWidth, kPageHeight)) {
                 card->setPosition({kPageWidth / 2.f, kPageHeight / 2.f});
