@@ -779,18 +779,16 @@ namespace {
 
         void buildInput() {
             this->toggleRow(0, "no-input-delay", "No Additional Input Delay");
-            statRow(1, "Frame order", "input");
-            noteRow(2, "Bookkeeping runs after the game update and after the scene draw. "
-                       "Nothing is added before input.");
+            this->toggleRow(1, "low-latency", "Low Latency (drain GPU queue)");
+            statRow(2, "Frame order", "input");
 
 #ifdef GEODE_IS_WINDOWS
             this->toggleRow(3, "timer-resolution", "1 ms timer resolution");
             this->toggleRow(4, "background-throttle", "Throttle drawing in background");
             cycleRow(5, "Priority", CycleKind::Priority, "process-priority");
-            noteRow(6, "Windows-only. Physics, input handling and the FPS cap never change.");
-#else
-            noteRow(3, "Windows-only timing options are hidden on this platform.");
 #endif
+            noteRow(6, "Neither switch touches physics, input handling or the FPS cap. "
+                       "Low Latency costs frame rate to shorten the queue.");
         }
 
         void buildEditor() {
@@ -1011,9 +1009,10 @@ namespace {
                               intOf(stats.onePercentLowFps(240)).c_str());
             }
             else if (id == "pipeline") {
-                std::snprintf(text, sizeof(text), "%u logic/s   %s renderer   %s", logic,
+                std::snprintf(text, sizeof(text), "%u logic/s   %s renderer   %s%s", logic,
                               cfg.rendererOptimized ? "optimized" : "engine",
-                              cfg.noInputDelay ? "game first" : "counters first");
+                              cfg.noInputDelay ? "game first" : "counters first",
+                              cfg.lowLatency ? "   low latency" : "");
             }
             else if (id == "avoided") {
                 std::snprintf(text, sizeof(text), "%llu sprite   %llu particle   %llu batch",
@@ -1041,8 +1040,9 @@ namespace {
                               u64(counters.emptyBatchDrawsSkipped), u64(counters.batchDraws));
             }
             else if (id == "input") {
-                std::snprintf(text, sizeof(text), "%llu deferred / %llu scheduler",
-                              u64(counters.deferredBookkeeping), u64(counters.schedulerUpdates));
+                std::snprintf(text, sizeof(text), "%llu deferred / %llu scheduler / %llu drains",
+                              u64(counters.deferredBookkeeping), u64(counters.schedulerUpdates),
+                              u64(counters.lowLatencyDrains));
             }
             else if (id == "editor-state") {
                 std::snprintf(text, sizeof(text), "%s   %s",

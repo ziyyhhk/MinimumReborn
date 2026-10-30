@@ -62,6 +62,13 @@ namespace reborn {
         // input and simulation. It does not change the game's input code, timing or FPS cap.
         bool noInputDelay = true;
 
+        // Low latency: drain the GPU queue once the frame has been submitted, so the driver
+        // cannot hold several frames in flight ahead of the display. This is the approach the
+        // original Minimum takes (its own `low-latency` setting, MIT, same author); it is
+        // reimplemented here rather than copied. It lowers input-to-screen delay at the cost
+        // of frame rate, so it is opt-in and off by default.
+        bool lowLatency = false;
+
         // Render gate. Off by default. Draws at a fixed rate while the scheduler keeps
         // running at the game's normal rate (or 20 fps while the window is unfocused).
         bool renderGate = false;
@@ -116,6 +123,7 @@ namespace reborn {
         std::atomic<std::uint64_t> editorParticlesExamined{0};
         std::atomic<std::uint64_t> editorParticleDrawsSkipped{0};
         std::atomic<std::uint64_t> deferredBookkeeping{0};
+        std::atomic<std::uint64_t> lowLatencyDrains{0};
 
         std::atomic<std::uint32_t> fps{0};        // drawn frames per second, wall clock
         std::atomic<std::uint32_t> logicFps{0};   // scheduler updates per second

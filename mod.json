@@ -5,7 +5,7 @@
 	},
 	"id": "ziyyhhk.minimum-reborn",
 	"name": "Minimum Reborn",
-	"version": "v1.5.2",
+	"version": "v1.6.0",
 	"developer": "ziyyhhk",
 	"description": "A rendering-focused rebuild of Minimum with a native in-game control panel. Engine or Optimized renderer mode, zero-pixel and off-screen draw fast-outs, particle pool caps, an editor-only culling policy, and a No Additional Input Delay ordering mode that moves all mod bookkeeping behind the game's update. Physics, input handling and the game's FPS cap are never changed. Windows build for Geometry Dash 2.2081.",
 	"tags": [
@@ -141,6 +141,12 @@
 			"description": "Moves every piece of Minimum Reborn bookkeeping out of the pre-update part of the frame: the scheduler counter runs after the game's update, and statistics, benchmark sampling and the Win32 focus probe run after the scene is drawn. The mod then executes no instrumentation before the game processes input and simulation. Ordering change only: it does not modify game input code, physics or the FPS cap, and no hardware latency measurement is claimed.",
 			"type": "bool",
 			"default": true
+		},
+		"low-latency": {
+			"name": "Low Latency (drain GPU queue)",
+			"description": "Calls glFinish() once the frame has been submitted, so the driver cannot keep several frames queued ahead of the display and a click is not stuck behind them. This lowers input-to-screen delay; it does NOT make the game run faster, because the CPU now waits for the GPU each frame and average FPS can drop. Off by default. Same idea as the original Minimum's low-latency setting (MIT, same author), reimplemented here rather than copied. Physics, timing and the game's FPS cap are untouched.",
+			"type": "bool",
+			"default": false
 		},
 		"title-editor": {
 			"type": "title",

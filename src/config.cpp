@@ -264,6 +264,7 @@ namespace reborn {
         c.editorCull = parseCullMode(mod->getSettingValue<std::string>("editor-cull-mode"));
         c.editorCullMargin = marginFor(c.editorCull, 160.0, 16.0);
         c.noInputDelay = mod->getSettingValue<bool>("no-input-delay");
+        c.lowLatency = mod->getSettingValue<bool>("low-latency");
 
 #ifdef GEODE_IS_WINDOWS
         c.renderGate = mod->getSettingValue<bool>("render-gate");
@@ -320,6 +321,7 @@ namespace reborn {
         mod->setSettingValue<bool>("adaptive-cap", false);
         mod->setSettingValue<int64_t>("spawn-budget", 0);
         mod->setSettingValue<bool>("no-input-delay", true);
+        mod->setSettingValue<bool>("low-latency", false);
         mod->setSettingValue<bool>("editor-culling", true);
         mod->setSettingValue<std::string>("editor-cull-mode", "Conservative");
 #ifdef GEODE_IS_WINDOWS

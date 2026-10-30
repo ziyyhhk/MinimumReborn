@@ -4,7 +4,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 
-project(MinimumReborn VERSION 1.5.2)
+project(MinimumReborn VERSION 1.6.0)
 
 add_library(${PROJECT_NAME} SHARED
     src/main.cpp
@@ -32,6 +32,6 @@ target_include_directories(${PROJECT_NAME} PRIVATE src)
 target_link_libraries(${PROJECT_NAME} geode-sdk)
 
 if (WIN32)
-    # timeBeginPeriod / timeEndPeriod (system_tuning.cpp). harmless on non-Windows builds.
-    target_link_libraries(${PROJECT_NAME} winmm)
+    # timeBeginPeriod / timeEndPeriod (system_tuning.cpp) and glFinish (frame_gate.cpp).
+    target_link_libraries(${PROJECT_NAME} winmm opengl32)
 endif()

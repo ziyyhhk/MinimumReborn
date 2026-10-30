@@ -1,4 +1,10 @@
 #include <Geode/Geode.hpp>
+#ifdef GEODE_IS_WINDOWS
+// glFinish, used by the low-latency mode to drain the driver queue after the frame is
+// submitted. Declared here through the Windows SDK header rather than through a cocos
+// internal header, so the hook does not depend on which cocos header happens to be included.
+#include <gl/GL.h>
+#endif
 #include <Geode/modify/CCDirector.hpp>
 #include <Geode/modify/CCScheduler.hpp>
 #include <algorithm>
@@ -278,6 +284,17 @@ struct RebornFrameGate : Modify<RebornFrameGate, CCDirector> {
         Clock::time_point const drawStart = Clock::now();
         CCDirector::drawScene();
         Clock::time_point const drawEnd = Clock::now();
+
+#ifdef GEODE_IS_WINDOWS
+        // Low latency: let the GPU catch up before the next frame starts, so the driver
+        // cannot queue several frames ahead of the display and a click is not stuck behind
+        // them. Deliberately placed after drawEnd, so the wait shows up in the measured
+        // frame-to-frame time and not inside the mod's own draw time.
+        if (cfg.enabled && cfg.lowLatency) {
+            glFinish();
+            ++counters.lowLatencyDrains;
+        }
+#endif
 
         ++counters.framesDrawn;
         ++s.windowDrawn;
