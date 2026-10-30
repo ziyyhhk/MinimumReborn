@@ -140,7 +140,6 @@ namespace {
             if (pool < requested) ++reborn::counters().particlePoolsCapped;
             return pool;
         }
-    }
 
 }  // namespace
 

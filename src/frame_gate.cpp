@@ -123,8 +123,8 @@ namespace {
         // limiter; if very little is spent there, the time goes to the GPU or to waiting.
         // It is a hint, not a GPU measurement: there is deliberately no GPU timer.
         auto const& stats = reborn::frameStats();
-        double const frameMs = stats.averageFrameMs(kBottleneckWindow);
-        double const workMs = stats.averageWorkMs(kBottleneckWindow);
+        double const frameMs = stats.averageFrameMs(reborn::kBottleneckWindow);
+        double const workMs = stats.averageWorkMs(reborn::kBottleneckWindow);
         if (!measurable || stats.size() < 30 || frameMs <= 0.05 || workMs <= 0.0) {
             counters.bottleneck.store(static_cast<std::uint8_t>(reborn::Bottleneck::Unknown));
         }
