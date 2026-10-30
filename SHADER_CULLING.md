@@ -73,9 +73,11 @@ shader program.
 
 A draw is skipped only when the submission cannot produce a pixel this frame:
 
-* rendered opacity 0, scale 0 on either axis, or an empty content size - the quad covers zero
-  pixels or multiplies to zero alpha, which contributes nothing under either of cocos2d's
-  standard blend modes;
+* local opacity 0, scale 0 on either axis, or an empty content size - the quad covers zero
+  pixels;
+* displayed (inherited) opacity 0, and only when `blendFunc.src == GL_SRC_ALPHA`, i.e. the
+  blend itself multiplies the source by its alpha. Premultiplied blends use `GL_ONE` there and
+  a program that ignores vertex alpha could still paint, so those nodes are drawn;
 * entirely outside the viewport plus a margin, using a bound that contains the object at any
   rotation and scale;
 * a batch whose measured box contains every vertex it would have submitted.
