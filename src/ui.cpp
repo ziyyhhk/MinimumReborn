@@ -231,42 +231,48 @@ namespace {
     //     a proportion of it keeps the corners intact; a fixed number produced a stretched
     //     right edge and a thin bar sticking out of every pill.
     // -----------------------------------------------------------------------------
-    // Pill control
+    // Flat rectangles
     //
-    // GD's rounded square (square02b_001.png) reaches the engine as a trimmed atlas
-    // frame. Stretching it into a 20-unit tall row drags the trimmed transparent margin
-    // into a visible sliver at one end, and a nine-slice with hard-coded cap insets lands
-    // on the wrong sub-rect of the atlas (rounded left end, square right end). Both
-    // artifacts were screenshotted. So the control is drawn from primitives the engine
-    // renders exactly as asked: a flat body plus a one-pixel highlight, which also gives
-    // every button, chip and cycle row the same shape and the same dark charcoal tone.
+    // Two things were tried for these and both are wrong in practice:
+    //   * stretching GD's square02b_001.png into a 20-unit row drags the trimmed
+    //     transparent margin of its atlas frame into a sliver at one end, and a
+    //     nine-slice with hard-coded cap insets lands on the wrong sub-rect (rounded left
+    //     end, square right end);
+    //   * CCLayerColor builds its quad relative to the layer position in a way that does
+    //     not follow the anchor point here, so the bars and bodies ended up mirrored away
+    //     from where they were placed.
+    // A 16x16 solid white PNG owned by the mod has nothing to trim and nothing to flip:
+    // set the size, set the color, done. Rounded ends are given up deliberately.
     // -----------------------------------------------------------------------------
+    char const* const kRectSprite = "reborn-pixel.png"_spr;
+
+    CCSprite* makeRect(float width, float height, ccColor3B color, std::uint8_t opacity) {
+        auto* rect = CCSprite::create(kRectSprite);
+        if (!rect) return nullptr;
+        rect->setAnchorPoint({0.5f, 0.5f});
+        rect->setContentSize({width, height});
+        rect->setColor(color);
+        rect->setOpacity(opacity);
+        return rect;
+    }
+
     class Pill : public CCNode {
     protected:
-        CCLayerColor* m_body = nullptr;
-        CCLayerColor* m_top = nullptr;
-        float m_width = 0.f;
-        float m_height = 0.f;
+        CCSprite* m_body = nullptr;
+        CCSprite* m_top = nullptr;
 
         bool init(float width, float height, ccColor3B color, std::uint8_t opacity) {
             if (!CCNode::init()) return false;
-            m_width = width;
-            m_height = height;
-            this->setIgnoreAnchorPointForPosition(false);
             this->setAnchorPoint({0.5f, 0.5f});
             this->setContentSize({width, height});
 
-            m_body = CCLayerColor::create(ccc4(color.r, color.g, color.b, opacity), width, height);
+            m_body = makeRect(width, height, color, opacity);
             if (!m_body) return false;
-            m_body->setIgnoreAnchorPointForPosition(false);
-            m_body->setAnchorPoint({0.5f, 0.5f});
             m_body->setPosition({width / 2.f, height / 2.f});
             this->addChild(m_body);
 
-            m_top = CCLayerColor::create(ccc4(255, 255, 255, 30), width, 1.f);
+            m_top = makeRect(width, 1.f, ccc3(255, 255, 255), 30);
             if (m_top) {
-                m_top->setIgnoreAnchorPointForPosition(false);
-                m_top->setAnchorPoint({0.5f, 0.5f});
                 m_top->setPosition({width / 2.f, height - 0.5f});
                 this->addChild(m_top);
             }
@@ -348,7 +354,7 @@ namespace {
         CCMenu* m_pageMenu = nullptr;
         CCMenu* m_tabMenu = nullptr;
         CCMenu* m_footerMenu = nullptr;
-        CCLayerColor* m_tabAccent = nullptr;
+        CCSprite* m_tabAccent = nullptr;
         std::vector<std::function<void()>> m_actions;
         std::vector<CycleRef> m_cycles;
         std::vector<ToggleRef> m_toggles;
@@ -462,16 +468,12 @@ namespace {
             m_mainLayer->addChild(m_navRoot);
 
             // Baseline the tabs sit on, plus the accent bar that marks the selected tab.
-            if (auto* base = CCLayerColor::create(ccc4(255, 255, 255, 26), kContentWidth, 1)) {
-                base->setIgnoreAnchorPointForPosition(false);
-                base->setAnchorPoint({0.5f, 0.5f});
-                base->setPosition({kCX, kNavCenterY - kNavH / 2.f});
+            if (auto* base = makeRect(kContentWidth, 1.f, ccc3(255, 255, 255), 26)) {
+                base->setPosition({kCX + kContentWidth / 2.f, kCY + kNavCenterY - kNavH / 2.f});
                 m_navRoot->addChild(base);
             }
-            m_tabAccent = CCLayerColor::create(ccc4(96, 214, 141, 235), kTabWidth - 16.f, 2.f);
+            m_tabAccent = makeRect(kTabWidth - 16.f, 2.f, ccc3(96, 214, 141), 235);
             if (m_tabAccent) {
-                m_tabAccent->setIgnoreAnchorPointForPosition(false);
-                m_tabAccent->setAnchorPoint({0.5f, 0.5f});
                 m_tabAccent->setPosition({kCX, kCY});
                 m_navRoot->addChild(m_tabAccent);
             }
@@ -555,7 +557,8 @@ namespace {
                 fitLabel(label, selected ? 0.35f : 0.33f, kTabWidth - 8.f);
             }
             if (m_tabAccent) {
-                m_tabAccent->setPosition({kCX + tabCenter(static_cast<int>(m_page)),
+                m_tabAccent->setPosition({kCX + tabCenter(static_cast<int>(m_page))
+                                               + (kTabWidth - 16.f) / 2.f,
                                           kCY + kNavCenterY - kNavH / 2.f + 1.5f});
             }
         }
