@@ -41,7 +41,8 @@ Implemented:
    Reset and a link to Geode's native settings page.
 
 Deliberately not implemented (documented, not faked): object batching / custom renderer,
-dynamic resolution, GPU timing, `glFinish` low-latency mode, adaptive quality.
+dynamic resolution, GPU timing, adaptive quality. (`glFinish` low-latency mode was also on this
+phase-1 list; it is implemented later, in v1.6.0 - see §34.)
 
 ## 2. Rendering changes: original path vs. replacement
 
@@ -191,7 +192,9 @@ collision and physics never see the culling code. Rendering never feeds back int
   per-sprite cull and fast-out do not see it. A separate switch would remove visuals without
   removing the batch submission.
 * **Dynamic resolution, GPU timers, `glFinish`.** Same reasoning as phase 1: no safe or
-  non-blocking path through this SDK, and a blocking query would cost frames.
+  non-blocking path through this SDK, and a blocking query would cost frames. (`glFinish` was
+  later added in v1.6.0 as an *opt-in* low-latency mode that accepts exactly that throughput
+  cost - see §34; it stayed out of the phase-2 optimized draw path.)
 * **Skipping particle simulation for off-screen systems.** Explicitly out of scope: an
   off-screen system still runs `update()` every frame, so emission timing, lifetimes and
   physics are unchanged. Only its draw is skipped.
@@ -502,3 +505,115 @@ inside BetterEdit's module, reached from `EditorUI::onPause`. So the editor-side
 (editor sprites/particles tested and skipped) remain **unverified in a live editor session**,
 and that is recorded as a gap rather than claimed as working. Everything else on the Editor
 page is the same code path as the other pages, which were verified.
+
+
+---
+
+# Phase 6 (v1.5.0 - v1.6.0): the batched path walked back, and the GPU queue drained
+
+These releases came from code review and from inspecting the original Minimum repository, not
+from new in-game measurement: v1.5.x and v1.6.0 were built by CI and installed, but **not
+launched or played here** (the owner asked for the code work and said they would test). Every
+claim below was checked against `src/rendering.cpp`, `src/frame_gate.cpp`, `src/config.{hpp,cpp}`,
+`src/ui.cpp`, `mod.json` and `CMakeLists.txt`.
+
+## 32. v1.5.1 - whole-batch culling removed, plus two smaller hardenings
+
+v1.5.0 had added a whole-batch visibility test to reach the batched level path (§17, §18). A
+review of that code - not a play-test - found two failure modes that can hide an *entire* batch
+permanently, and neither can be ruled out from inside a mod:
+
+1. the scan covered `TextureAtlas::getTotalQuads()` slots, but the engine can submit more entries
+   than that - children added through `addSpriteWithoutQuad`, and stale slots past the count left
+   by removed objects - so a visible batch can fall outside the measured box;
+2. in cocos2d-x 3 and later the batch node assembles its vertex buffer inside `draw()`, so
+   skipping that `draw()` also skips the rebuild and the next frame measures a frozen buffer - a
+   batch whose children later scrolled into view can stay culled indefinitely.
+
+Settling which case applies depends on GD's exact fork and needs an in-game test on a level with
+off-screen batches; an unmeasured gain did not justify shipping a possible invisible-level bug, so
+the feature is gone. The `Batch culling` setting, its culled counter and its panel control were
+removed. Verified in the tree: `BatchNodeTelemetry::draw` (`src/rendering.cpp`) now only counts
+batch draws/quads and skips the genuinely empty case (`quads == 0`); `config.hpp` has no batch-cull
+counter (only `batchDraws`, `batchQuads`, `emptyBatchDrawsSkipped`); `mod.json` has no batch setting;
+the Culling page (`src/ui.cpp`) has no batch control - the batch stat row reports
+`empty skipped / drawn`. `SHADER_CULLING.md` §8 keeps the full reasoning.
+
+v1.5.1 also made two smaller changes:
+
+* **Sprite zero-opacity skip narrowed** back to the node's own `getOpacity()`; the wider
+  `getDisplayedOpacity()` case is unsafe for a program that reads only vertex rgb or a
+  non-premultiplied additive blend (see §33 for how v1.5.2 brought the safe part back).
+* **Transform-basis cache hardened against pointer reuse** (`src/rendering.cpp`): a node freed and
+  reallocated at the same address within one frame would otherwise be handed the previous
+  occupant's world basis, so each `Slot` now also stores the parent pointer and the node position,
+  and the one-entry `Memo` stores the parent, before any cached basis is reused.
+
+## 33. v1.5.2 - the inherited-opacity skip, reintroduced safely
+
+v1.5.2 adds the inherited-opacity fast-out back, but only where it is provably correct: a sprite
+whose `getDisplayedOpacity()` is 0 is skipped **only when `getBlendFunc().src == GL_SRC_ALPHA`**,
+the case where the blend equation itself multiplies the source by its alpha, so a transparent node
+contributes nothing. Premultiplied blends (`src == GL_ONE`) are drawn, since a program that ignores
+vertex alpha could still paint. This is the second branch in `SpriteDrawFastPath::draw`
+(`src/rendering.cpp`) and is documented in `SHADER_CULLING.md` §6. It is a correctness-preserving
+draw skip only, inside the optimized renderer path and behind `renderer-mode` / `sprite-fast-path`;
+the node's-own-opacity, zero-scale and empty-size skips are unchanged.
+
+## 34. v1.6.0 - Low Latency (drain GPU queue)
+
+New `low-latency` setting (bool, default false, Windows). After `CCDirector::drawScene()` returns
+and the frame has been submitted, `src/frame_gate.cpp` calls `glFinish()` (inside
+`#ifdef GEODE_IS_WINDOWS`) so the driver cannot keep several frames queued ahead of the display and
+a click is not stuck behind them. It is counted in the `lowLatencyDrains` counter, shown on the
+Input page (the "Frame order" row reports `deferred / scheduler / drains`) and in the Overview
+pipeline row (which appends `low latency` when on). `CMakeLists.txt` now links `opengl32` on
+Windows for the `glFinish` symbol.
+
+Honest framing, matching the `mod.json` description: this **lowers input-to-screen delay but can
+reduce average frame rate**, because the CPU now waits for the GPU every frame; it does **not**
+touch physics, timing or the game's FPS cap. It is off by default. **No FPS or latency improvement
+has been measured for it** - v1.6.0 was built and installed, not launched or played here.
+
+## 35. Correction: the "No Additional Input Delay" premise about Minimum
+
+The brief these releases were written against assumed Minimum Reborn's input-delay behaviour could
+be checked against the original Minimum. Inspecting that repository (github.com/ziyyhhk/Minimum,
+public, MIT, v3.2.2, geode 5.11.2, GD 2.2081, win/mac/android/ios) shows the premise is false, and
+it is recorded here so no future doc repeats it:
+
+* The original Minimum has **no "No Additional Input Delay" setting and no input hook at all.**
+  That setting - moving mod bookkeeping after the game's scheduler update and after the scene draw
+  (`src/frame_gate.cpp`, `RebornSchedulerTick` and `RebornFrameGate`) - is **Minimum Reborn's own
+  design**. It is *not* mirrored, matched or inherited from Minimum, and it cannot be validated by
+  reading Minimum. Any earlier wording that implied otherwise is corrected in the README (§13).
+* What Minimum **actually** does for latency is a `low-latency` setting that calls `glFinish()`
+  once per submitted frame to drain the driver queue (its own comment: "Input-to-screen latency is
+  mostly queueing ... Calling glFinish() once the frame has been submitted makes the CPU wait until
+  the GPU has caught up"). So the v1.6.0 feature in §34 is the **Reborn equivalent of Minimum's
+  real approach** - same author, MIT-licensed, reimplemented, no code copied.
+* Minimum does touch timing/priority directly (`timeBeginPeriod(1)`, `SetPriorityClass`, an EcoQoS
+  opt-out, a sleep+spin frame wait, an animation-interval unlock). Minimum Reborn deliberately does
+  **not** change the game's FPS cap or animation interval; those statements about Reborn remain
+  accurate (the render gate and background throttle are separate opt-in draw-cadence controls, not
+  FPS-cap changes).
+
+## 36. What is still unverified (as of v1.6.0)
+
+* v1.5.x and v1.6.0 were built by CI and installed, but **not launched or played by the assistant**
+  - the owner asked for code work and said they would test themselves. The only in-game numbers in
+  this report are the earlier v1.2.x/v1.4.0 runs (§18, §27).
+* **No measured FPS or latency improvement exists for the new `glFinish` mode**; its cost/benefit is
+  stated from its mechanism, not from a run.
+* The **batched level-object path is untouched since v1.5.1** (the whole-batch cull was removed;
+  only the empty-batch skip and count-only telemetry remain). Non-zero batch culling was never
+  measured, and the feature that would have produced it no longer ships.
+* The project **remains Windows-only in its metadata** (`mod.json` declares `gd.win` only, CI builds
+  Windows) even though the original Minimum ships for mac/android/ios. The `low-latency` *behaviour*
+  is Windows-only by construction (the `glFinish` call compiles only under `GEODE_IS_WINDOWS`),
+  though the `low-latency` setting key is not itself tagged `win` in `mod.json` - a minor mismatch,
+  harmless while the package is Windows-only.
+* Licensing is unchanged and accurate: Bismuth (GPL-3.0-or-later plus an added clause banning use to
+  facilitate AI-driven GD level generation/modification) is a **design reference only - no Bismuth
+  code, shaders or assets are used**; the low-latency idea is drawn from Minimum (MIT, same author)
+  and reimplemented, not copied.

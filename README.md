@@ -4,12 +4,15 @@ A rendering-focused optimization mod for Geometry Dash 2.2081, built with C++20 
 Geode SDK. It is a successor to [Minimum](https://github.com/ziyyhhk/Minimum), with the
 render path as the main subject rather than a settings collection.
 
-**Status: v1.5.2, built by GitHub Actions and run in Geometry Dash on a Windows laptop.**
-The runtime evidence in this README and in `DEVELOPMENT_REPORT.md` comes from that machine,
-not from estimates. It also changed the design: GD batches its level objects, so the
-per-sprite scene cull cannot see them. Scene culling is opt-in and off in the default
-profile, and this file says so. See section 9 for the measured Engine vs Optimized A/B and
-for what the draw path actually avoids.
+**Status: v1.6.0, built by GitHub Actions and installed.** The measured runtime evidence in this
+README and in `DEVELOPMENT_REPORT.md` - the Engine vs Optimized A/B table and the skip counts -
+comes from earlier in-game runs on a Windows laptop, not from estimates. What has *not* been run
+in-game here is v1.5.x and v1.6.0: those were built by CI and installed, but not launched or
+played (the owner tests them), so no FPS or latency number is claimed for the newest features
+(see section 13). The measurements did change the design: GD batches its level objects, so the
+per-sprite scene cull cannot see them. Scene culling is opt-in and off in the default profile,
+and this file says so. See section 9 for the measured Engine vs Optimized A/B and for what the
+draw path actually avoids.
 
 ## What it does
 
@@ -160,8 +163,6 @@ These were considered and deliberately left out rather than faked:
   render-target resize path through the SDK; changing window or viewport size is not an
   equivalent and was not attempted. Documented as future work.
 * **GPU timers.** No reliable non-blocking timer is exposed; omitted rather than faked.
-* **Hard GPU sync (`glFinish`) low-latency mode.** It trades throughput for latency and was
-  not part of this build. Minimum Reborn adds no input-path code at all instead.
 * **Automatic quality presets by frame time.** The only automatic adjustment is the opt-in
   particle cap (off by default), which changes pool allocation, never simulation.
 * **A "disable glow" switch.** GD's glow is part of the batched level path, so neither the
@@ -194,6 +195,11 @@ Hot paths never look up setting keys.
 Minimum Reborn **adds no input hook, queue, buffer, lock, thread or sleep**. The game reads
 input on the main thread exactly as before. The render gate never postpones input processing:
 on a skipped render frame the scheduler still runs. No physics or timing values are modified.
+Two opt-in switches change *when* things happen, not the game's input code: **No Additional
+Input Delay** (this mod's own design - see section 13) moves all mod bookkeeping behind the
+game's update and behind the scene draw, and **Low Latency (drain GPU queue)** calls `glFinish()`
+after each submitted frame to shorten the driver's queue. The latter trades average frame rate
+for lower input-to-screen delay and is not measured here.
 
 What the numbers mean:
 
@@ -291,8 +297,10 @@ Runtime evidence (this laptop, details and numbers above):
 ## License
 
 MIT. Original code by ziyyhhk. Minimum (MIT) was used as a behavioral reference for the
-particle techniques and the render-gate scheduling approach, both reimplemented for this
-project. No GPL code from Bismuth is included.
+particle techniques, the render-gate scheduling approach, and the `low-latency` (`glFinish`)
+idea; all are reimplemented for this project and no Minimum code is copied. The No Additional
+Input Delay setting is Minimum Reborn's own design, not inherited from Minimum (see section 13).
+No GPL code from Bismuth is included.
 
 
 ## 9. v1.4.0 - the control panel rebuilt, and what the draw path really saves
@@ -407,6 +415,11 @@ path this mod touches.
 
 ## 11. v1.5.0 - reaching the batched path
 
+> **Superseded:** the whole-batch culling this section describes was added in v1.5.0 and
+> **removed in v1.5.1** after review found two ways it could hide an entire batch permanently
+> (section 12 and `SHADER_CULLING.md` §8). Only the empty-batch skip remains; there is no batch
+> culling setting, counter or panel control. Read this section as the history of the attempt.
+
 The measured history of this mod kept hitting the same wall: GD submits level objects through
 `CCSpriteBatchNode`, which draws all of its children in one call and never runs
 `CCSprite::draw` for them, so every per-sprite optimization was blind to the bulk of a level.
@@ -430,3 +443,67 @@ Honest status: this is new, it is off by default, and its gain has **not** been 
 live level yet - the user asked for code work rather than more test launches. The Culling page
 reports `culled / measured / drawn` so the first person to enable it can see exactly how much
 of a given level the batch path can remove, instead of taking a claim for it.
+
+
+## 12. v1.5.1 and v1.5.2 - the batched path removed, one skip brought back safely
+
+Both of these came from a code review rather than from playing the game.
+
+**v1.5.1 removed the whole-batch visibility culling** that v1.5.0 had added (section 11). A
+review found two failure modes that could hide an entire batch permanently, and neither can be
+ruled out from inside a mod:
+
+* the scan measured `TextureAtlas::getTotalQuads()` slots, but the engine can submit more
+  entries than that - children added via `addSpriteWithoutQuad`, and stale slots past the count
+  from removed objects - so a visible batch can fall outside the measured box;
+* in cocos2d-x 3 and later the batch node assembles its vertex buffer inside `draw()`, so
+  skipping that `draw()` also skips the rebuild and the next frame measures a frozen buffer - a
+  batch whose children have since scrolled into view can stay culled indefinitely.
+
+Settling it needs an in-game test on a level with off-screen batches, which has not been done,
+so the setting, its counters and its panel control are gone. **The empty-batch skip remains** -
+a batch with zero quads cannot hide anything. v1.5.1 also **hardened the transform-basis cache
+against pointer reuse**: a node freed and reallocated at the same address within one frame would
+previously have been handed the old occupant's world basis, so each cache entry now also carries
+the parent pointer and the node position, and the one-entry sibling memo carries the parent.
+Finally it **narrowed the sprite zero-opacity skip** back to the node's own opacity.
+
+**v1.5.2 reintroduced the inherited-opacity skip, safely.** A sprite whose `getDisplayedOpacity()`
+is 0 is skipped only when `getBlendFunc().src == GL_SRC_ALPHA` - the case where the blend equation
+itself multiplies the source by its alpha, so a fully transparent node provably cannot paint.
+Premultiplied blends (`src == GL_ONE`) are drawn, because a program that ignores vertex alpha
+could still paint there. See `SHADER_CULLING.md` section 6. The node's-own-opacity, zero-scale and
+empty-size skips are unchanged.
+
+## 13. v1.6.0 - Low Latency (drain GPU queue), and a correction about Minimum
+
+**The feature.** A new `low-latency` setting (bool, default off, Windows) calls `glFinish()` once
+the frame has been submitted, so the driver cannot keep several frames queued ahead of the display
+and a click is not stuck behind them. It is counted in `lowLatencyDrains`, shown on the Input page
+("Frame order: deferred / scheduler / **drains**") and in the Overview pipeline row ("low
+latency"), and `CMakeLists.txt` now links `opengl32` on Windows. In plain terms it **LOWERS
+input-to-screen delay but can REDUCE average frame rate**, because the CPU now waits for the GPU
+every single frame. It does not touch physics, timing or the game's FPS cap, and no FPS or latency
+improvement has been measured for it - v1.6.0 was built and installed, not launched here.
+
+**The correction.** The original [Minimum](https://github.com/ziyyhhk/Minimum) (public, MIT,
+v3.2.2, geode 5.11.2, GD 2.2081, win/mac/android/ios) has **no "No Additional Input Delay" setting
+and no input hook at all.** That setting - moving mod bookkeeping after the game's scheduler update
+and after the scene draw - is **Minimum Reborn's own design**, and it cannot be validated by
+reading Minimum; earlier text here implied otherwise and is now fixed. What Minimum *actually*
+does for latency is a `low-latency` setting that calls `glFinish()` once per submitted frame to
+drain the driver queue ("Input-to-screen latency is mostly queueing ... Calling `glFinish()` once
+the frame has been submitted makes the CPU wait until the GPU has caught up"). So this v1.6.0
+feature is the **Reborn equivalent of Minimum's real approach** - same author, MIT-licensed,
+reimplemented, no code copied. Minimum also touches timing/priority directly (`timeBeginPeriod(1)`,
+`SetPriorityClass`, an EcoQoS opt-out, a sleep+spin frame wait, an animation-interval unlock);
+Minimum Reborn deliberately does **not** change the game's FPS cap or animation interval, so those
+statements about Reborn remain accurate.
+
+**Still unverified for these docs.** v1.5.x and v1.6.0 were built by CI and installed, but not
+launched or played here (the owner asked for code work and will test). No measured FPS or latency
+number exists for the new `glFinish` mode. The batched level-object path is untouched since v1.5.1.
+And the project remains Windows-only in its metadata (`mod.json` declares `win` only) even though
+the original Minimum ships for mac/android/ios. As always, Bismuth (GPL-3.0-or-later, with an added
+clause banning its use to facilitate AI-driven GD level generation or modification) is a design
+reference only - **no Bismuth code, shaders or assets are used here.**

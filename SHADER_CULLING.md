@@ -2,7 +2,9 @@
 
 The Phase 5 brief asks the implementation to identify seven things about its shader-related
 optimization instead of shipping a toggle with a convincing name. This file answers them for
-v1.5.0, and states plainly where the engine does not allow what was asked.
+v1.5.2 (the current shader-culling behaviour; v1.6.0 changed nothing here - it added only the
+`glFinish` low-latency drain, which is not a culling change), and states plainly where the
+engine does not allow what was asked.
 
 ## 1. Which shader-related operations are avoided
 
@@ -98,8 +100,10 @@ a draw is skipped - which is why an object that scrolls back on screen looks ide
 * Measured so far (Stereo Madness, 60 FPS cap, 10 s per run): identical FPS either way, the
   optimized path costing +0.07 ms CPU per frame while removing 1,830 zero-pixel sprite draws
   per 10 s, with 0 scene and 0 particle culls because every level object was batched. That last
-  number is the reason batch culling exists; its own gain is **not yet measured in a live
-  level**, and it ships off by default for exactly that reason.
+  number is why a whole-batch cull was attempted in v1.5.0; the review in section 8 found two
+  ways it could hide an entire batch, so it was **removed in v1.5.1** and only the empty-batch
+  skip remains. Batch-level savings have therefore **never been measured in a live level**, and
+  no such claim is made here.
 
 ## 8. The batch-level test that was built and then removed
 

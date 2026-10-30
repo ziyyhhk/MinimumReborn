@@ -144,7 +144,7 @@
 		},
 		"low-latency": {
 			"name": "Low Latency (drain GPU queue)",
-			"description": "Calls glFinish() once the frame has been submitted, so the driver cannot keep several frames queued ahead of the display and a click is not stuck behind them. This lowers input-to-screen delay; it does NOT make the game run faster, because the CPU now waits for the GPU each frame and average FPS can drop. Off by default. Same idea as the original Minimum's low-latency setting (MIT, same author), reimplemented here rather than copied. Physics, timing and the game's FPS cap are untouched.",
+			"description": "Calls glFinish() once the frame has been submitted, so the driver cannot keep several frames queued ahead of the display and a click is not stuck behind them. This lowers input-to-screen delay; it does NOT make the game run faster, because the CPU now waits for the GPU each frame and average FPS can drop. Off by default. Same idea as the original Minimum's low-latency setting (MIT, same author), reimplemented here rather than copied. Physics, timing and the game's FPS cap are untouched. Windows only: the drain is compiled into the Windows draw path, so the switch has no effect elsewhere.",
 			"type": "bool",
 			"default": false
 		},

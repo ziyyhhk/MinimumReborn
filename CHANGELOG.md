@@ -1,5 +1,37 @@
 # Changelog
 
+## v1.6.0 (2026-10-30)
+
+A new opt-in latency mode, and the correction of a premise about the original Minimum that the
+earlier docs carried.
+
+* **Low Latency (drain GPU queue)** (`low-latency`, bool, default false, Windows): calls
+  `glFinish()` once the frame has been submitted, so the driver cannot keep several frames queued
+  ahead of the display and a click is not stuck behind them. This **lowers input-to-screen delay
+  but can reduce average frame rate**, because the CPU now waits for the GPU every frame. It does
+  not touch physics, timing or the game's FPS cap. It is counted in `lowLatencyDrains`, shown on
+  the Input page and in the Overview pipeline row, and `CMakeLists.txt` now links `opengl32` on
+  Windows. No FPS or latency number has been measured for it here (built and installed, not
+  launched). This is the Reborn equivalent of the original Minimum's real approach to latency -
+  its own `low-latency`/`glFinish` setting (MIT, same author), reimplemented, no code copied.
+* **Premise corrected**: inspecting Minimum showed it has **no** "No Additional Input Delay"
+  setting and no input hook. That setting - moving mod bookkeeping after the game's scheduler
+  update and after the scene draw - is Minimum Reborn's own design, not something inherited from
+  or validated by Minimum. Earlier text that implied otherwise is fixed in the README and the
+  development report.
+
+## v1.5.2 (2026-10-30)
+
+Reintroduces one skip that v1.5.1 had narrowed away, this time with a guard that makes it
+provably correct. A review change, not a measured one.
+
+* **Inherited-opacity skip, safely.** A sprite whose `getDisplayedOpacity()` is 0 is now skipped
+  - but only when `getBlendFunc().src == GL_SRC_ALPHA`, the case where the blend equation itself
+  multiplies the source by its alpha, so a fully transparent node cannot contribute a pixel.
+  Premultiplied blends (`src == GL_ONE`) are still drawn, since a program that ignores vertex
+  alpha could paint there. The node's-own-opacity and zero-scale/empty-size skips from v1.5.1 are
+  unchanged. See `SHADER_CULLING.md` section 6.
+
 ## v1.5.1 (2026-10-30)
 
 A feature removed and one skip narrowed, both from reviewing the code rather than playing the
