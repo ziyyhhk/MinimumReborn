@@ -4,7 +4,7 @@ A rendering-focused optimization mod for Geometry Dash 2.2081, built with C++20 
 Geode SDK. It is a successor to [Minimum](https://github.com/ziyyhhk/Minimum), with the
 render path as the main subject rather than a settings collection.
 
-**Status: v1.6.0, built by GitHub Actions and installed.** The measured runtime evidence in this
+**Status: v1.6.1, built by GitHub Actions and installed.** The measured runtime evidence in this
 README and in `DEVELOPMENT_REPORT.md` - the Engine vs Optimized A/B table and the skip counts -
 comes from earlier in-game runs on a Windows laptop, not from estimates. What has *not* been run
 in-game here is v1.5.x and v1.6.0: those were built by CI and installed, but not launched or

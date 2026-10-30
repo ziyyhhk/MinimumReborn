@@ -1,5 +1,23 @@
 # Changelog
 
+## v1.6.1 (2026-10-30)
+
+Follow-ups from a read-only review of the new low-latency hook.
+
+* **The GPU wait no longer leaks into the render gate.** The gate accumulates wall time between
+  hooks, so the drain's cost was being charged to the next frame, quietly pulling the effective
+  render rate below the requested one and making pacing uneven when both features are on. The
+  sample point is now advanced by the measured drain duration. Frame-to-frame time still shows
+  the cost, which is correct - it is real.
+* **The switch is Windows-only in the panel too.** The drain is compiled into the Windows draw
+  path, so the toggle is hidden elsewhere instead of offering a control that cannot act.
+* **Low Latency no longer flips the profile to Custom.** It is a per-user preference that no
+  profile owns, like the overlay and timer switches.
+* **Honest trade-off in the description:** with vsync on, the buffer swap already blocks, so
+  `glFinish()` mostly adds a driver flush and wait. The gain is clearest when the game is not
+  vsync-bound, and it can cost average frame rate - noticeably on hybrid/Optus laptops.
+
+
 ## v1.6.0 (2026-10-30)
 
 A new opt-in latency mode, and the correction of a premise about the original Minimum that the
