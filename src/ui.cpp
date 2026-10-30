@@ -1060,26 +1060,20 @@ namespace {
     };
 }
 
-namespace reborn {
-    void ensureHud(unsigned int totalFrames) {
-        // The old build created the overlay only after frame 300 *and* only if the overlay
-        // setting was on at that moment, so turning it on later produced no overlay until
-        // the next launch. Create it early and let applyLayout control visibility.
-        if (g_hudCreated || totalFrames < 120) return;
-        auto* overlay = OverlayManager::get();
-        if (!overlay) return;
-        if (auto* hud = StatsHud::create()) {
-            hud->setID("minimum-reborn-hud"_spr);
-            overlay->addChild(hud, 99999);
-            g_hudCreated = true;
+    // -----------------------------------------------------------------------------
+    // Entry point button
+    //
+    // Installed on the gameplay pause layer *and* the editor pause layer, because the
+    // editor counters on the Editor page can only be read while the editor is the active
+    // scene. Same badge, same position, same panel.
+    // -----------------------------------------------------------------------------
+    void openRebornPanel() {
+        if (auto* popup = RebornPopup::create()) {
+            popup->show();
         }
     }
-}
 
-class $modify(RebornPauseLayer, PauseLayer) {
-    void customSetup() {
-        PauseLayer::customSetup();
-
+    void installPanelButton(CCNode* layer, CCNode* target, SEL_MenuHandler selector) {
         float const width = 48.f;
         auto* holder = CCNode::create();
         holder->setContentSize({width, width});
@@ -1101,9 +1095,7 @@ class $modify(RebornPauseLayer, PauseLayer) {
             holder->addChild(fallback, 1);
         }
 
-        auto* button = CCMenuItemSpriteExtra::create(
-            holder, this, menu_selector(RebornPauseLayer::onOpenReborn)
-        );
+        auto* button = CCMenuItemSpriteExtra::create(holder, target, selector);
         button->setID("reborn-button"_spr);
 
         auto* menu = CCMenu::create();
@@ -1111,18 +1103,51 @@ class $modify(RebornPauseLayer, PauseLayer) {
         menu->addChild(button);
         menu->setPosition({0.f, 0.f});
 
-        // Sits just past the native pause row (which ends around +158 design units from
-        // centre) instead of in a corner. Eclipse's draggable menu button can occupy any
-        // corner, so the row remains the one place it does not cover.
+        // Just past the native pause row (which ends around +158 design units from centre)
+        // rather than in a corner: Eclipse's draggable menu button can occupy any corner, so
+        // the row is the one place it does not cover.
         auto const win = CCDirector::get()->getWinSize();
         button->setPosition({win.width / 2.f + 205.f, win.height / 2.f - 11.f});
         menu->setTouchPriority(-600);
-        this->addChild(menu, 100);
+        layer->addChild(menu, 100);
+    }
+
+namespace reborn {
+    void ensureHud(unsigned int totalFrames) {
+        // The old build created the overlay only after frame 300 *and* only if the overlay
+        // setting was on at that moment, so turning it on later produced no overlay until
+        // the next launch. Create it early and let applyLayout control visibility.
+        if (g_hudCreated || totalFrames < 120) return;
+        auto* overlay = OverlayManager::get();
+        if (!overlay) return;
+        if (auto* hud = StatsHud::create()) {
+            hud->setID("minimum-reborn-hud"_spr);
+            overlay->addChild(hud, 99999);
+            g_hudCreated = true;
+        }
+    }
+}
+
+class $modify(RebornPauseLayer, PauseLayer) {
+    void customSetup() {
+        PauseLayer::customSetup();
+        installPanelButton(this, this, menu_selector(RebornPauseLayer::onOpenReborn));
     }
 
     void onOpenReborn(CCObject*) {
-        if (auto* popup = RebornPopup::create()) {
-            popup->show();
-        }
+        openRebornPanel();
+    }
+};
+
+// The editor has its own pause layer, so the panel would otherwise be unreachable while the
+// editor counters on the Editor page are the only ones worth looking at.
+class $modify(RebornEditorPauseLayer, EditorPauseLayer) {
+    void customSetup() {
+        EditorPauseLayer::customSetup();
+        installPanelButton(this, this, menu_selector(RebornEditorPauseLayer::onOpenReborn));
+    }
+
+    void onOpenReborn(CCObject*) {
+        openRebornPanel();
     }
 };
