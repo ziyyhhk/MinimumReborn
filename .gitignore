@@ -1,0 +1,9 @@
+build/
+build-*/
+out/
+.vs/
+.idea/
+CMakeLists.txt.user
+*.geode
+*.pdb
+*.zip

@@ -1,0 +1,257 @@
+#include <Geode/Geode.hpp>
+#include <algorithm>
+#include <cstring>
+#include "config.hpp"
+
+#ifdef GEODE_IS_WINDOWS
+#include <Windows.h>
+#endif
+
+using namespace geode::prelude;
+
+// Settings snapshot.
+//
+// The keys below must match mod.json exactly. Types follow Geode's mapping:
+//   bool  -> getSettingValue<bool>
+//   int   -> getSettingValue<int64_t>
+//   float -> getSettingValue<float>
+//   string-> getSettingValue<std::string>
+//
+// Profiles are write-through: selecting a named profile writes the profile's values into
+// the individual settings once (so the setting store, the native settings page and the
+// running config all agree), then fills the snapshot. Selecting Custom changes nothing.
+// Editing any individual setting from the popup switches the profile to Custom first.
+
+namespace reborn {
+
+    namespace {
+
+        Config g_config;
+        Counters g_counters;
+        std::chrono::steady_clock::time_point g_lastRefresh{};
+        std::chrono::steady_clock::time_point g_lastFocusCheck{};
+        bool g_focused = true;
+        int g_unfocusedPolls = 0;
+        std::string g_lastAppliedProfile;
+
+        constexpr unsigned int kDefaultParticleCap = 128;
+        constexpr int kDefaultBackgroundFps = 20;
+
+        struct ProfileValues {
+            char const* name;
+            unsigned int particleCap;
+            int backgroundFps;
+        };
+
+        // Only features that exist are listed. No profile claims a feature the build lacks.
+        constexpr ProfileValues kProfiles[] = {
+            {"Default",     256, 20},
+            {"Balanced",    128, 20},
+            {"Performance",  64, 15},
+            {"Extreme",      32, 10},
+        };
+
+        char const* profileName(Profile profile) {
+            switch (profile) {
+                case Profile::Default: return "Default";
+                case Profile::Balanced: return "Balanced";
+                case Profile::Performance: return "Performance";
+                case Profile::Extreme: return "Extreme";
+                default: return "Custom";
+            }
+        }
+
+        Profile parseProfile(std::string const& value) {
+            if (value == "Default") return Profile::Default;
+            if (value == "Performance") return Profile::Performance;
+            if (value == "Extreme") return Profile::Extreme;
+            if (value == "Balanced") return Profile::Balanced;
+            return Profile::Custom;
+        }
+
+        ProfileValues const* valuesFor(Profile profile) {
+            for (auto const& entry : kProfiles) {
+                if (std::strcmp(entry.name, profileName(profile)) == 0) return &entry;
+            }
+            return nullptr;
+        }
+
+        Corner parseCorner(std::string const& value) {
+            if (value == "Top Right") return Corner::TopRight;
+            if (value == "Bottom Left") return Corner::BottomLeft;
+            if (value == "Bottom Right") return Corner::BottomRight;
+            return Corner::TopLeft;
+        }
+
+        Priority parsePriority(std::string const& value) {
+            if (value == "Above Normal") return Priority::AboveNormal;
+            if (value == "High") return Priority::High;
+            return Priority::Normal;
+        }
+
+        // Writes a named profile into the individual settings. Only runs when the profile
+        // setting itself changed, so it never fights the user's edits.
+        void applyProfileValues(Profile profile) {
+            auto const* values = valuesFor(profile);
+            if (!values) return;
+
+            auto* mod = Mod::get();
+            mod->setSettingValue<bool>("sprite-fast-path", true);
+            mod->setSettingValue<bool>("skip-idle-particles", true);
+            mod->setSettingValue<bool>("cull-offscreen-particles", true);
+            mod->setSettingValue<bool>("cap-particles", true);
+            mod->setSettingValue<int64_t>("particle-cap", static_cast<int64_t>(values->particleCap));
+#ifdef GEODE_IS_WINDOWS
+            mod->setSettingValue<bool>("background-throttle", true);
+            mod->setSettingValue<int64_t>("background-fps", values->backgroundFps);
+#endif
+            log::info("Minimum Reborn: applied profile '{}' (particle cap {})", values->name, values->particleCap);
+        }
+
+    }
+
+    Config const& config() {
+        return g_config;
+    }
+
+    Counters& counters() {
+        return g_counters;
+    }
+
+    void refreshConfig() {
+        auto* mod = Mod::get();
+
+        Config c;
+
+        // Profiles apply before the individual values are read, so a profile change takes
+        // effect on the same refresh. Switching to Custom clears the marker, so picking the
+        // same named profile again later writes its values again.
+        c.profile = parseProfile(mod->getSettingValue<std::string>("profile"));
+        std::string const profileKey = profileName(c.profile);
+        if (c.profile == Profile::Custom) {
+            g_lastAppliedProfile.clear();
+        }
+        else if (profileKey != g_lastAppliedProfile) {
+            g_lastAppliedProfile = profileKey;
+            applyProfileValues(c.profile);
+        }
+
+        c.enabled = mod->getSettingValue<bool>("enabled");
+        c.spriteFastPath = mod->getSettingValue<bool>("sprite-fast-path");
+        c.skipIdleParticles = mod->getSettingValue<bool>("skip-idle-particles");
+        c.cullOffscreenParticles = mod->getSettingValue<bool>("cull-offscreen-particles");
+        c.capParticles = mod->getSettingValue<bool>("cap-particles");
+
+        int64_t cap = mod->getSettingValue<int64_t>("particle-cap");
+        c.particleCap = static_cast<unsigned int>(std::clamp<int64_t>(cap, 4, 1000));
+        int64_t budget = mod->getSettingValue<int64_t>("spawn-budget");
+        c.spawnBudget = static_cast<unsigned int>(std::clamp<int64_t>(budget, 0, 200));
+
+#ifdef GEODE_IS_WINDOWS
+        c.renderGate = mod->getSettingValue<bool>("render-gate");
+        int64_t gateFps = mod->getSettingValue<int64_t>("render-gate-fps");
+        c.renderGateFps = static_cast<double>(std::clamp<int64_t>(gateFps, 30, 360));
+
+        c.backgroundThrottle = mod->getSettingValue<bool>("background-throttle");
+        int64_t bgFps = mod->getSettingValue<int64_t>("background-fps");
+        c.backgroundFps = static_cast<double>(std::clamp<int64_t>(bgFps, 1, 60));
+
+        c.timerResolution = mod->getSettingValue<bool>("timer-resolution");
+        c.disablePowerThrottling = mod->getSettingValue<bool>("disable-power-throttling");
+        c.priority = parsePriority(mod->getSettingValue<std::string>("process-priority"));
+#else
+        c.renderGate = false;
+        c.backgroundThrottle = false;
+        c.timerResolution = false;
+        c.disablePowerThrottling = false;
+        c.priority = Priority::Normal;
+#endif
+
+        c.showOverlay = mod->getSettingValue<bool>("show-overlay");
+        c.overlayDetailed = mod->getSettingValue<std::string>("overlay-detail") == "Detailed";
+        c.overlayCorner = parseCorner(mod->getSettingValue<std::string>("overlay-corner"));
+        c.overlayScale = std::clamp(mod->getSettingValue<float>("overlay-scale"), 0.2f, 2.0f);
+        int64_t opacity = mod->getSettingValue<int64_t>("overlay-opacity");
+        c.overlayOpacity = static_cast<std::uint8_t>(std::clamp<int64_t>(opacity, 20, 255));
+        int64_t targetFps = mod->getSettingValue<int64_t>("target-fps");
+        c.targetFps = static_cast<double>(std::clamp<int64_t>(targetFps, 20, 360));
+
+        g_config = c;
+        applySystemTuning();
+    }
+
+    void refreshConfigIfDue(std::chrono::steady_clock::time_point now) {
+        using namespace std::chrono_literals;
+        if (now - g_lastRefresh >= 500ms) {
+            g_lastRefresh = now;
+            refreshConfig();
+        }
+    }
+
+    void resetToDefaults() {
+        auto* mod = Mod::get();
+        mod->setSettingValue<bool>("enabled", true);
+        mod->setSettingValue<bool>("sprite-fast-path", true);
+        mod->setSettingValue<bool>("skip-idle-particles", true);
+        mod->setSettingValue<bool>("cull-offscreen-particles", true);
+        mod->setSettingValue<bool>("cap-particles", true);
+        mod->setSettingValue<int64_t>("particle-cap", static_cast<int64_t>(kDefaultParticleCap));
+        mod->setSettingValue<int64_t>("spawn-budget", 0);
+#ifdef GEODE_IS_WINDOWS
+        mod->setSettingValue<bool>("render-gate", false);
+        mod->setSettingValue<int64_t>("render-gate-fps", 60);
+        mod->setSettingValue<bool>("background-throttle", true);
+        mod->setSettingValue<int64_t>("background-fps", kDefaultBackgroundFps);
+        mod->setSettingValue<bool>("timer-resolution", true);
+        mod->setSettingValue<bool>("disable-power-throttling", true);
+        mod->setSettingValue<std::string>("process-priority", "Normal");
+#endif
+        mod->setSettingValue<bool>("show-overlay", true);
+        mod->setSettingValue<std::string>("overlay-detail", "Compact");
+        mod->setSettingValue<std::string>("overlay-corner", "Top Left");
+        mod->setSettingValue<float>("overlay-scale", 0.5f);
+        mod->setSettingValue<int64_t>("overlay-opacity", 200);
+        mod->setSettingValue<int64_t>("target-fps", 60);
+
+        g_lastAppliedProfile.clear();
+        mod->setSettingValue<std::string>("profile", "Balanced");
+        refreshConfig();
+        log::info("Minimum Reborn: settings reset to defaults");
+    }
+
+    bool processHasForeground(std::chrono::steady_clock::time_point now) {
+#ifdef GEODE_IS_WINDOWS
+        using namespace std::chrono_literals;
+        if (now - g_lastFocusCheck >= 250ms) {
+            g_lastFocusCheck = now;
+
+            // Two independent checks; focused if either says so. Unfocused is reported only
+            // after two unfocused polls in a row (~0.5 s), so a one-off wrong answer can
+            // never throttle drawing.
+            bool const ownsKeyboardFocus = GetFocus() != nullptr;
+            bool foregroundIsOurs = false;
+            if (HWND foreground = GetForegroundWindow()) {
+                DWORD ownerPid = 0;
+                GetWindowThreadProcessId(foreground, &ownerPid);
+                foregroundIsOurs = ownerPid == GetCurrentProcessId();
+            }
+
+            if (ownsKeyboardFocus || foregroundIsOurs) {
+                g_unfocusedPolls = 0;
+                g_focused = true;
+            }
+            else if (++g_unfocusedPolls >= 2) {
+                g_focused = false;
+            }
+        }
+        return g_focused;
+#else
+        (void)now;
+        return true;
+#endif
+    }
+
+    bool backgroundThrottled(std::chrono::steady_clock::time_point now) {
+        return g_config.enabled && g_config.backgroundThrottle && !processHasForeground(now);
+    }
+}

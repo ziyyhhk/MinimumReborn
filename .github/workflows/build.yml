@@ -1,0 +1,47 @@
+name: Build Geode Mod
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    name: Build Windows
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Official Geode action: installs the requested SDK, configures CMake with the
+      # project's CMakeLists.txt, builds it and exposes the generated .geode through
+      # steps.build.outputs.build-output. Pinned to a commit so an upstream change cannot
+      # break the workflow without a deliberate update.
+      - name: Build the mod
+        id: build
+        uses: geode-sdk/build-geode-mod@a0f7676e6fcd1a584f6d0c1c800239008412defc # v1
+        with:
+          sdk: latest
+          target: Win64
+          build-config: Release
+          combine: false
+
+      - name: Show build output
+        shell: pwsh
+        run: |
+          Write-Host "build-output: ${{ steps.build.outputs.build-output }}"
+          Get-ChildItem -Recurse -Filter *.geode | Select-Object FullName, Length
+
+      - name: Upload the .geode package
+        uses: actions/upload-artifact@v4
+        with:
+          name: MinimumReborn-Windows
+          path: ${{ steps.build.outputs.build-output }}
+          if-no-files-found: error
+          retention-days: 30

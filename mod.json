@@ -1,0 +1,236 @@
+{
+	"geode": "5.10.0",
+	"gd": {
+		"win": "2.2081"
+	},
+	"id": "ziyyhhk.minimum-reborn",
+	"name": "Minimum Reborn",
+	"version": "v1.0.0",
+	"developer": "ziyyhhk",
+	"description": "A rendering-focused rebuild of Minimum. Skips sprite and particle draws that cannot produce a pixel, caps particle pools, and offers an optional render gate that draws at a fixed rate while the game's logic keeps its normal schedule. Physics, input timing and the FPS cap are never changed. Windows build for Geometry Dash 2.2081.",
+	"tags": [
+		"performance",
+		"utility"
+	],
+	"links": {
+		"source": "https://github.com/ziyyhhk/MinimumReborn"
+	},
+	"settings": {
+		"title-general": {
+			"type": "title",
+			"name": "General"
+		},
+		"profile": {
+			"name": "Profile",
+			"description": "Balanced is the default. Default keeps particle effects closest to normal, Performance and Extreme lower the particle cap further. Selecting a profile writes its values into the settings once; editing any setting afterwards switches the profile to Custom. Nothing here changes physics, input timing or the game's FPS cap.",
+			"type": "string",
+			"default": "Balanced",
+			"one-of": [
+				"Custom",
+				"Default",
+				"Balanced",
+				"Performance",
+				"Extreme"
+			]
+		},
+		"enabled": {
+			"name": "Enable Minimum Reborn",
+			"description": "Master switch. Off restores the game's normal draw path immediately, without a restart.",
+			"type": "bool",
+			"default": true
+		},
+		"target-fps": {
+			"name": "Target FPS",
+			"description": "The frame rate you want to hold, usually your monitor's refresh rate. Used only to color the overlay and to pick the frame-time thresholds. It does not change the game's FPS cap.",
+			"type": "int",
+			"min": 20,
+			"max": 360,
+			"default": 60
+		},
+		"title-rendering": {
+			"type": "title",
+			"name": "Rendering"
+		},
+		"sprite-fast-path": {
+			"name": "Sprite Draw Fast-Out",
+			"description": "Skips the draw call for sprites that cannot produce any pixel: opacity 0, zero scale on an axis, or an empty content size. Children are still drawn normally, so the image is unchanged. On by default.",
+			"type": "bool",
+			"default": true
+		},
+		"skip-idle-particles": {
+			"name": "Skip Idle Particle Draws",
+			"description": "Does not issue a draw for particle systems that have no live particles. Looks exactly the same and is free to keep on.",
+			"type": "bool",
+			"default": true
+		},
+		"cull-offscreen-particles": {
+			"name": "Skip Off-Screen Particles",
+			"description": "Does not draw relative-position particle systems whose worst-case reach does not touch the screen. They keep updating, so emission timing and motion are unchanged when they scroll back. Free and grouped systems are always drawn.",
+			"type": "bool",
+			"default": true
+		},
+		"cap-particles": {
+			"name": "Cap Particle Pool Size",
+			"description": "Limits how many particles one system can hold. The pool, quad and index buffers are allocated for the capped size, so nothing can index out of bounds. Only affects systems created after the change: re-enter the level.",
+			"type": "bool",
+			"default": true
+		},
+		"particle-cap": {
+			"name": "Particle Cap",
+			"description": "Maximum particles per system. 256 is close to normal, 128 trims extreme particle spam, 32 is aggressive. Thin effects are the only visual cost.",
+			"type": "int",
+			"min": 4,
+			"max": 1000,
+			"default": 128,
+			"enable-if": "cap-particles"
+		},
+		"spawn-budget": {
+			"name": "Particle Spawn Budget",
+			"description": "How many particle systems per frame get a full pool during a level. 0 is off. Systems past the budget still exist but get a pool of 4, so a burst of effects looks thinner instead of stalling the frame.",
+			"type": "int",
+			"min": 0,
+			"max": 200,
+			"default": 0
+		},
+		"title-pacing": {
+			"type": "title",
+			"name": "Frame Pacing (Windows)",
+			"platforms": [
+				"win"
+			]
+		},
+		"render-gate": {
+			"name": "Render Gate (experimental)",
+			"description": "Experimental and OFF by default. Draws at Render FPS while the scheduler keeps the game's normal rate, so physics, collision and input processing still run every tick. Only useful above the display refresh rate (uncapped FPS). It delays what you see by up to one render interval, so leave it off if you want the most direct visual feedback. Do not use it together with mat.draw-divide.",
+			"type": "bool",
+			"default": false,
+			"platforms": [
+				"win"
+			]
+		},
+		"render-gate-fps": {
+			"name": "Render FPS",
+			"description": "Draw rate while the Render Gate is on. Set it to your monitor refresh rate.",
+			"type": "int",
+			"min": 30,
+			"max": 360,
+			"default": 60,
+			"platforms": [
+				"win"
+			],
+			"enable-if": "render-gate"
+		},
+		"background-throttle": {
+			"name": "Throttle Drawing In Background",
+			"description": "While the game window is not focused, draw at Background FPS. Logic and audio keep running normally. Turn off if you record the game with window capture while it is unfocused.",
+			"type": "bool",
+			"default": true,
+			"platforms": [
+				"win"
+			]
+		},
+		"background-fps": {
+			"name": "Background FPS",
+			"description": "Draw rate while the game window is not focused.",
+			"type": "int",
+			"min": 1,
+			"max": 60,
+			"default": 20,
+			"platforms": [
+				"win"
+			],
+			"enable-if": "background-throttle"
+		},
+		"title-system": {
+			"type": "title",
+			"name": "System (Windows)",
+			"platforms": [
+				"win"
+			]
+		},
+		"timer-resolution": {
+			"name": "1 ms Timer Resolution",
+			"description": "Asks Windows for 1 ms timer wakeups instead of about 15.6 ms, which reduces uneven frame pacing when the game waits for the next frame. Slightly higher idle power use. Undone when switched off.",
+			"type": "bool",
+			"default": true,
+			"platforms": [
+				"win"
+			]
+		},
+		"disable-power-throttling": {
+			"name": "Disable Power Throttling",
+			"description": "Opts the game process out of Windows efficiency mode (EcoQoS) so it is not moved to slow cores or low clocks. Useful on laptops and Windows 11.",
+			"type": "bool",
+			"default": true,
+			"platforms": [
+				"win"
+			]
+		},
+		"process-priority": {
+			"name": "Process Priority",
+			"description": "Above Normal is safe. High can starve OBS or Discord. Applied immediately, no restart needed.",
+			"type": "string",
+			"default": "Normal",
+			"one-of": [
+				"Normal",
+				"Above Normal",
+				"High"
+			],
+			"platforms": [
+				"win"
+			]
+		},
+		"title-monitor": {
+			"type": "title",
+			"name": "Monitor"
+		},
+		"show-overlay": {
+			"name": "Performance Overlay",
+			"description": "Shows FPS, average and p95 frame time, 1% low, logic updates per second, CPU time inside the draw call and the skip counters. Updated four times a second; it creates no nodes per frame.",
+			"type": "bool",
+			"default": true
+		},
+		"overlay-detail": {
+			"name": "Overlay Detail",
+			"description": "Compact shows FPS, average frame time and 1% low. Detailed adds frame-time p95, logic rate, draw CPU time, the bottleneck hint and the skipped-draw counters. 'draw ms' is CPU time inside the draw hook, not GPU time.",
+			"type": "string",
+			"default": "Compact",
+			"one-of": [
+				"Compact",
+				"Detailed"
+			],
+			"enable-if": "show-overlay"
+		},
+		"overlay-corner": {
+			"name": "Overlay Corner",
+			"description": "Where the overlay is drawn.",
+			"type": "string",
+			"default": "Top Left",
+			"one-of": [
+				"Top Left",
+				"Top Right",
+				"Bottom Left",
+				"Bottom Right"
+			],
+			"enable-if": "show-overlay"
+		},
+		"overlay-scale": {
+			"name": "Overlay Scale",
+			"description": "Size of the overlay text.",
+			"type": "float",
+			"min": 0.2,
+			"max": 2,
+			"default": 0.5,
+			"enable-if": "show-overlay"
+		},
+		"overlay-opacity": {
+			"name": "Overlay Opacity",
+			"description": "Opacity of the overlay text, 20 to 255.",
+			"type": "int",
+			"min": 20,
+			"max": 255,
+			"default": 200,
+			"enable-if": "show-overlay"
+		}
+	}
+}
