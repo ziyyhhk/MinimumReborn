@@ -181,14 +181,13 @@ namespace {
     // ---------------------------------------------------------------------------------
     // Shared visual helpers
     // ---------------------------------------------------------------------------------
-    // The popup is deliberately smaller than the 320-unit design height so it reads as a
-    // window over the paused game instead of a full-screen dashboard. 470x284 design units
-    // leave roughly a 100x37 pixel margin at 1176x664.
-    constexpr float kPopupWidth = 470.f;
-    constexpr float kPopupHeight = 284.f;
-    constexpr float kPageWidth = 446.f;
-    constexpr float kPageHeight = 168.f;
-    constexpr float kButtonHeight = 22.f;
+    // Compact window: 400x240 design units in a 566x320 play area. It floats over the
+    // paused game (roughly 830x498 pixels at 1176x664) instead of covering the screen.
+    constexpr float kPopupWidth = 400.f;
+    constexpr float kPopupHeight = 240.f;
+    constexpr float kPageWidth = 376.f;
+    constexpr float kPageHeight = 150.f;
+    constexpr float kButtonHeight = 20.f;
 
     void fitLabel(CCLabelBMFont* label, float maxScale, float room) {
         float const natural = label->getContentSize().width;
@@ -316,29 +315,19 @@ namespace {
         // Header, tabs, footer
         // -----------------------------------------------------------------------------
         void buildHeader() {
-            auto* logo = CCSprite::create("logo-128.png"_spr);
-            if (logo) {
-                float const h = logo->getContentSize().height;
-                logo->setScale(h > 0.f ? 30.f / h : 1.f);
-                m_mainLayer->addChildAtPosition(logo, Anchor::Center, ccp(-196.f, 118.f));
-            }
-
-            if (auto* title = makeLabel("MINIMUM REBORN", "bigFont.fnt", 0.5f)) {
+            if (auto* title = makeLabel("MINIMUM REBORN", "bigFont.fnt", 0.46f)) {
                 title->setAnchorPoint({0.f, 0.5f});
-                m_mainLayer->addChildAtPosition(title, Anchor::Center, ccp(-176.f, 121.f));
-            }
-            if (auto* sub = makeLabel("draw-only optimization  |  v1.3.2", "chatFont.fnt", 0.35f, 185, true)) {
-                m_mainLayer->addChildAtPosition(sub, Anchor::Center, ccp(-175.f, 109.f));
+                m_mainLayer->addChildAtPosition(title, Anchor::Center, ccp(-188.f, 101.f));
             }
 
-            if (auto* caption = makeLabel("ACTIVE PROFILE", "chatFont.fnt", 0.3f, 145, true)) {
+            if (auto* caption = makeLabel("ACTIVE PROFILE", "chatFont.fnt", 0.26f, 145, true)) {
                 caption->setAnchorPoint({1.f, 0.5f});
-                m_mainLayer->addChildAtPosition(caption, Anchor::Center, ccp(172.f, 122.f));
+                m_mainLayer->addChildAtPosition(caption, Anchor::Center, ccp(188.f, 106.f));
             }
-            m_headerProfile = makeLabel("Balanced", "goldFont.fnt", 0.4f, 255, true);
+            m_headerProfile = makeLabel("Balanced", "goldFont.fnt", 0.36f, 255, true);
             if (m_headerProfile) {
                 m_headerProfile->setAnchorPoint({1.f, 0.5f});
-                m_mainLayer->addChildAtPosition(m_headerProfile, Anchor::Center, ccp(172.f, 110.f));
+                m_mainLayer->addChildAtPosition(m_headerProfile, Anchor::Center, ccp(188.f, 94.f));
             }
         }
 
@@ -347,29 +336,29 @@ namespace {
             m_tabMenu->setPosition({kPopupWidth / 2.f, kPopupHeight / 2.f});
             m_mainLayer->addChild(m_tabMenu, 10);
 
-            float const width = 68.f;
+            float const width = 58.f;
             float const gap = 3.f;
             float const total = 6.f * width + 5.f * gap;
             float x = -total / 2.f + width / 2.f;
 
             for (int i = 0; i < static_cast<int>(PageCount); ++i) {
                 auto* holder = CCNode::create();
-                holder->setContentSize({width, 22.f});
-                auto* bg = makeButtonBackground(width, 22.f, i == static_cast<int>(m_page));
+                holder->setContentSize({width, 20.f});
+                auto* bg = makeButtonBackground(width, 20.f, i == static_cast<int>(m_page));
                 if (bg) {
-                    bg->setPosition({width / 2.f, 11.f});
+                    bg->setPosition({width / 2.f, 10.f});
                     holder->addChild(bg);
                 }
-                auto* label = makeLabel(kPageNames[i], "bigFont.fnt", 0.34f);
+                auto* label = makeLabel(kPageNames[i], "bigFont.fnt", 0.3f);
                 if (label) {
-                    fitLabel(label, 0.34f, width - 8.f);
-                    label->setPosition({width / 2.f, 11.f});
+                    fitLabel(label, 0.3f, width - 6.f);
+                    label->setPosition({width / 2.f, 10.f});
                     holder->addChild(label);
                 }
                 auto* item = CCMenuItemSpriteExtra::create(holder, this, menu_selector(RebornPopup::onTab));
                 item->setTag(i);
                 m_tabMenu->addChild(item);
-                item->setPosition({x + static_cast<float>(i) * (width + gap), 90.f});
+                item->setPosition({x + static_cast<float>(i) * (width + gap), 76.f});
                 m_tabBackgrounds.push_back(bg);
                 m_tabLabels.push_back(label);
             }
@@ -380,27 +369,27 @@ namespace {
             m_footerMenu->setPosition({kPopupWidth / 2.f, kPopupHeight / 2.f});
             m_mainLayer->addChild(m_footerMenu, 10);
 
-            this->footerButton("Reset", -120.f, menu_selector(RebornPopup::onReset));
+            this->footerButton("Reset", -102.f, menu_selector(RebornPopup::onReset));
             this->footerButton("All Settings", 0.f, menu_selector(RebornPopup::onAllSettings));
-            this->footerButton("Close", 120.f, menu_selector(RebornPopup::closePopup));
+            this->footerButton("Close", 102.f, menu_selector(RebornPopup::closePopup));
         }
 
         void footerButton(char const* text, float x, SEL_MenuHandler selector) {
-            float const width = text[0] == 'A' ? 120.f : (text[0] == 'R' ? 92.f : 92.f);
+            float const width = text[0] == 'A' ? 110.f : 86.f;
             auto* holder = CCNode::create();
-            holder->setContentSize({width, 22.f});
-            if (auto* bg = makeButtonBackground(width, 22.f, false)) {
-                bg->setPosition({width / 2.f, 11.f});
+            holder->setContentSize({width, 20.f});
+            if (auto* bg = makeButtonBackground(width, 20.f, false)) {
+                bg->setPosition({width / 2.f, 10.f});
                 holder->addChild(bg);
             }
-            if (auto* label = makeLabel(text, "bigFont.fnt", 0.4f)) {
-                fitLabel(label, 0.4f, width - 10.f);
-                label->setPosition({width / 2.f, 11.f});
+            if (auto* label = makeLabel(text, "bigFont.fnt", 0.36f)) {
+                fitLabel(label, 0.36f, width - 8.f);
+                label->setPosition({width / 2.f, 10.f});
                 holder->addChild(label);
             }
             auto* item = CCMenuItemSpriteExtra::create(holder, this, selector);
             m_footerMenu->addChild(item);
-            item->setPosition({x, -118.f});
+            item->setPosition({x, -99.f});
         }
 
         void onTab(CCObject* sender) {
@@ -452,7 +441,7 @@ namespace {
             m_pageRoot = CCNode::create();
             m_pageRoot->setContentSize({kPageWidth, kPageHeight});
             m_pageRoot->setAnchorPoint({0.5f, 0.5f});
-            m_mainLayer->addChildAtPosition(m_pageRoot, Anchor::Center, ccp(0.f, -13.f));
+            m_mainLayer->addChildAtPosition(m_pageRoot, Anchor::Center, ccp(0.f, -5.f));
 
             if (auto* card = makeCard(kPageWidth, kPageHeight)) {
                 card->setPosition({kPageWidth / 2.f, kPageHeight / 2.f});
@@ -523,14 +512,14 @@ namespace {
             CycleKind kind, std::string key, std::function<void()> advance
         ) {
             auto ref = this->buttonAt(
-                x, y, width, kButtonHeight, prefix + ": ...", std::move(advance), false, 0.37f
+                x, y, width, kButtonHeight, prefix + ": ...", std::move(advance), false, 0.33f
             );
             m_cycles.push_back({ref.label, kind, std::move(key), prefix, width});
         }
 
         void toggleAt(float x, float y, std::string key, std::string const& text) {
             auto* toggler = CCMenuItemToggler::createWithStandardSprites(
-                this, menu_selector(RebornPopup::onToggle), 0.55f
+                this, menu_selector(RebornPopup::onToggle), 0.5f
             );
             if (!toggler) return;
             toggler->setTag(static_cast<int>(m_toggles.size()));
@@ -538,155 +527,134 @@ namespace {
             toggler->setPosition({x, y});
             m_toggles.push_back({toggler, key});
 
-            if (auto* label = makeLabel(text, "bigFont.fnt", 0.4f, 235, true)) {
+            if (auto* label = makeLabel(text, "bigFont.fnt", 0.34f, 235, true)) {
                 m_pageRoot->addChild(label);
-                label->setPosition({kPageWidth / 2.f + x + 18.f, kPageHeight / 2.f + y});
+                label->setPosition({kPageWidth / 2.f + x + 16.f, kPageHeight / 2.f + y});
             }
         }
 
         void buildOverview() {
-            m_liveLabel = textAt("--", 0.f, 54.f, 0.42f, "chatFont.fnt");
+            m_liveLabel = textAt("--", 0.f, 48.f, 0.4f, "chatFont.fnt");
             if (m_liveLabel) m_liveLabel->setAlignment(kCCTextAlignmentCenter);
 
-            if (auto* caption = textAt("PROFILE", 0.f, 24.f, 0.3f, "chatFont.fnt", 150)) {
-                caption->setAlignment(kCCTextAlignmentCenter);
-            }
-
-            float const width = 80.f;
-            float const gap = 5.f;
+            float const width = 70.f;
+            float const gap = 3.f;
             float const total = 5.f * width + 4.f * gap;
             float x = -total / 2.f + width / 2.f;
             for (int i = 0; i < 5; ++i) {
                 std::string name = kProfileNames[i];
                 auto ref = this->buttonAt(
-                    x + static_cast<float>(i) * (width + gap), 5.f, width, 20.f, name,
+                    x + static_cast<float>(i) * (width + gap), 18.f, width, 18.f, name,
                     [this, name]() {
                         Mod::get()->setSettingValue<std::string>("profile", name);
                         reborn::refreshConfig();
                         this->refreshPage();
-                    }, false, 0.33f
+                    }, false, 0.3f
                 );
                 m_chips.push_back({ref.background, ref.label, name});
             }
 
-            this->toggleAt(-148.f, -24.f, "enabled", "Mod enabled");
-            this->toggleAt(46.f, -24.f, "show-overlay", "Performance overlay");
+            this->toggleAt(-140.f, -14.f, "enabled", "Mod enabled");
+            this->toggleAt(20.f, -14.f, "show-overlay", "Performance overlay");
 
-            auto bench = this->buttonAt(-76.f, -58.f, 100.f, 21.f, "Benchmark",
-                [this]() { this->toggleBenchmark(); }, false, 0.36f);
+            auto bench = this->buttonAt(-70.f, -50.f, 130.f, 20.f, "Benchmark",
+                [this]() { this->toggleBenchmark(); }, false, 0.33f);
             m_benchLabel = bench.label;
-            this->buttonAt(54.f, -58.f, 112.f, 21.f, "Geode Settings",
-                [this]() { this->onAllSettings(nullptr); }, false, 0.34f);
+            this->buttonAt(75.f, -50.f, 120.f, 20.f, "Geode Settings",
+                [this]() { this->onAllSettings(nullptr); }, false, 0.31f);
 
             textAt(
-                "Physics, collision, input timing and the game's FPS cap are never changed.",
-                0.f, -76.f, 0.3f, "chatFont.fnt", 160
+                "Physics, collision and the game's FPS cap are never changed.",
+                0.f, -68.f, 0.26f, "chatFont.fnt", 150
             );
         }
 
         void buildRender() {
-            this->cycleAt(-20.f, 60.f, 250.f, "Renderer", CycleKind::Renderer, "renderer-mode",
+            this->cycleAt(0.f, 52.f, 230.f, "Renderer", CycleKind::Renderer, "renderer-mode",
                 this->makeCycleAction(CycleKind::Renderer, "renderer-mode"));
 
-            this->toggleAt(-160.f, 34.f, "sprite-fast-path", "Sprite draw fast-out");
-            this->toggleAt(-160.f, 10.f, "skip-idle-particles", "Skip idle particle draws");
-            this->toggleAt(-160.f, -14.f, "cap-particles", "Cap particle pool size");
-            this->toggleAt(-160.f, -38.f, "adaptive-cap", "Adaptive cap (experimental)");
+            this->toggleAt(-150.f, 24.f, "sprite-fast-path", "Sprite draw fast-out");
+            this->toggleAt(-150.f, 0.f, "skip-idle-particles", "Skip idle particle draws");
+            this->toggleAt(-150.f, -24.f, "cap-particles", "Cap particle pool size");
 
-            this->cycleAt(-76.f, -64.f, 170.f, "Particle cap", CycleKind::ParticleCap, "particle-cap",
+            this->cycleAt(-58.f, -52.f, 170.f, "Particle cap", CycleKind::ParticleCap, "particle-cap",
                 this->makeCycleAction(CycleKind::ParticleCap, "particle-cap"));
 #ifdef GEODE_IS_WINDOWS
-            this->toggleAt(102.f, -64.f, "render-gate", "Render gate");
+            this->toggleAt(86.f, -52.f, "render-gate", "Render gate");
 #endif
             textAt(
-                "Draw-only: order, blending, glow, clipping and shaders are untouched.",
-                0.f, -79.f, 0.28f, "chatFont.fnt", 155
+                "Draw-only: order, blending, glow, clipping and shaders untouched.",
+                0.f, -70.f, 0.25f, "chatFont.fnt", 150
             );
         }
 
         void buildCulling() {
-            this->cycleAt(-20.f, 58.f, 280.f, "Particles", CycleKind::Cull, "particle-cull-mode",
+            this->cycleAt(0.f, 52.f, 250.f, "Particles", CycleKind::Cull, "particle-cull-mode",
                 this->makeCycleAction(CycleKind::Cull, "particle-cull-mode"));
-            this->cycleAt(-20.f, 30.f, 280.f, "Scene sprites", CycleKind::Cull, "scene-cull",
+            this->cycleAt(0.f, 28.f, 250.f, "Scene sprites", CycleKind::Cull, "scene-cull",
                 this->makeCycleAction(CycleKind::Cull, "scene-cull"));
 
-            m_liveLabel = textAt("--", 0.f, -6.f, 0.4f, "chatFont.fnt");
+            m_liveLabel = textAt("--", 0.f, -8.f, 0.34f, "chatFont.fnt");
             if (m_liveLabel) m_liveLabel->setAlignment(kCCTextAlignmentCenter);
 
             textAt(
-                "Particle systems keep updating and emitting when their draw is skipped.\n"
-                "Scene culling only decides whether an unbatched sprite is submitted;\n"
-                "nodes, triggers, collisions and children are untouched.",
-                -216.f, -46.f, 0.33f, "chatFont.fnt", 185, true
-            );
-            textAt(
-                "GD batches level objects, so in-level culling mostly covers UI and effect sprites.",
-                0.f, -78.f, 0.28f, "chatFont.fnt", 150
+                "Draw-only. Simulation, physics, collisions and triggers are untouched.",
+                0.f, -60.f, 0.26f, "chatFont.fnt", 160
             );
         }
 
         void buildInput() {
-            this->toggleAt(-160.f, 64.f, "no-input-delay", "No Additional Input Delay");
-
-            textAt(
-                "Moves mod bookkeeping out of the pre-update part of the frame: the scheduler\n"
-                "count runs after the game update, and stats, benchmark sampling and the Win32\n"
-                "focus probe run after the scene is drawn. No work is added before input.",
-                -216.f, 30.f, 0.32f, "chatFont.fnt", 195, true
-            );
+            this->toggleAt(-150.f, 52.f, "no-input-delay", "No Additional Input Delay");
 
 #ifdef GEODE_IS_WINDOWS
-            this->toggleAt(-160.f, -12.f, "timer-resolution", "1 ms timer resolution");
-            this->toggleAt(-160.f, -36.f, "background-throttle", "Throttle drawing in background");
-            this->cycleAt(-36.f, -58.f, 210.f, "Priority", CycleKind::Priority, "process-priority",
+            this->toggleAt(-150.f, 26.f, "timer-resolution", "1 ms timer resolution");
+            this->toggleAt(-150.f, 0.f, "background-throttle", "Throttle drawing in background");
+            this->cycleAt(-30.f, -28.f, 210.f, "Priority", CycleKind::Priority, "process-priority",
                 this->makeCycleAction(CycleKind::Priority, "process-priority"));
 #else
-            textAt("Windows-only timing options are hidden on this platform.", -216.f, -20.f,
-                0.34f, "chatFont.fnt", 160, true);
+            textAt("Windows-only timing options are hidden on this platform.", -150.f, 12.f,
+                0.32f, "chatFont.fnt", 160, true);
 #endif
 
-            m_liveLabel = textAt("--", 0.f, -78.f, 0.28f, "chatFont.fnt");
+            m_liveLabel = textAt("--", 0.f, -54.f, 0.27f, "chatFont.fnt");
             if (m_liveLabel) m_liveLabel->setAlignment(kCCTextAlignmentCenter);
+            textAt(
+                "Ordering only; game input, physics and the FPS cap are unchanged.",
+                0.f, -67.f, 0.24f, "chatFont.fnt", 145
+            );
         }
 
         void buildEditor() {
-            this->toggleAt(-160.f, 64.f, "editor-culling", "Editor visibility and particle culling");
-            this->cycleAt(-30.f, 36.f, 250.f, "Editor mode", CycleKind::EditorCull, "editor-cull-mode",
+            this->toggleAt(-150.f, 52.f, "editor-culling", "Editor visibility and particle culling");
+            this->cycleAt(-24.f, 26.f, 240.f, "Editor mode", CycleKind::EditorCull, "editor-cull-mode",
                 this->makeCycleAction(CycleKind::EditorCull, "editor-cull-mode"));
 
-            m_liveLabel = textAt("--", 0.f, 0.f, 0.36f, "chatFont.fnt");
+            m_liveLabel = textAt("--", 0.f, -14.f, 0.33f, "chatFont.fnt");
             if (m_liveLabel) m_liveLabel->setAlignment(kCCTextAlignmentCenter);
 
             textAt(
-                "Applies the same draw-only tests while the editor is open. Object data, selection,\n"
-                "dragging, undo, copy/paste, triggers and saving are never touched. GD batches level\n"
-                "objects, so only unbatched sprites and particle systems can actually be skipped.",
-                -216.f, -44.f, 0.32f, "chatFont.fnt", 190, true
-            );
-
-            textAt(
-                "Open the editor to populate these counters. Nothing is removed from the level.",
-                0.f, -78.f, 0.28f, "chatFont.fnt", 150
+                "No level data, selection or saving is changed.",
+                0.f, -58.f, 0.25f, "chatFont.fnt", 155
             );
         }
 
         void buildDiagnostics() {
-            this->toggleAt(-160.f, 62.f, "show-overlay", "Performance overlay");
-            this->cycleAt(-36.f, 34.f, 240.f, "Detail", CycleKind::Detail, "overlay-detail",
+            this->toggleAt(-150.f, 52.f, "show-overlay", "Performance overlay");
+            this->cycleAt(-30.f, 26.f, 220.f, "Detail", CycleKind::Detail, "overlay-detail",
                 this->makeCycleAction(CycleKind::Detail, "overlay-detail"));
-            this->cycleAt(-36.f, 8.f, 240.f, "Corner", CycleKind::Corner, "overlay-corner",
+            this->cycleAt(-30.f, 2.f, 220.f, "Corner", CycleKind::Corner, "overlay-corner",
                 this->makeCycleAction(CycleKind::Corner, "overlay-corner"));
 
-            auto bench = this->buttonAt(-70.f, -20.f, 160.f, 21.f, "Benchmark",
-                [this]() { this->toggleBenchmark(); }, false, 0.36f);
+            auto bench = this->buttonAt(-64.f, -26.f, 140.f, 20.f, "Benchmark",
+                [this]() { this->toggleBenchmark(); }, false, 0.33f);
             m_benchLabel = bench.label;
 
-            m_liveLabel = textAt("--", 0.f, -50.f, 0.32f, "chatFont.fnt");
+            m_liveLabel = textAt("--", 0.f, -50.f, 0.26f, "chatFont.fnt");
             if (m_liveLabel) m_liveLabel->setAlignment(kCCTextAlignmentCenter);
 
             textAt(
-                "draw ms is CPU time inside drawScene, not GPU time. No GPU timer is claimed.",
-                0.f, -78.f, 0.28f, "chatFont.fnt", 160
+                "draw ms is CPU time inside drawScene, not GPU time.",
+                0.f, -70.f, 0.23f, "chatFont.fnt", 150
             );
         }
 
@@ -821,7 +789,7 @@ namespace {
                 if (!c.label) continue;
                 std::string text = c.prefix + ": " + this->cycleValue(c, mod);
                 c.label->setString(text.c_str());
-                fitLabel(c.label, 0.4f, c.width - 12.f);
+                fitLabel(c.label, 0.34f, c.width - 12.f);
             }
 
             for (auto& chip : m_chips) {
@@ -874,12 +842,12 @@ namespace {
                 std::snprintf(
                     text, sizeof(text),
                     "%u FPS   |   avg %.1f ms   |   1%% low %s\n"
-                    "logic %u/s   |   %s renderer   |   %s",
+                    "%u logic/s   |   %s renderer   |   %s",
                     counters.fps.load(std::memory_order_relaxed),
                     stats.averageFrameMs(120), lowText,
                     counters.logicFps.load(std::memory_order_relaxed),
                     cfg.rendererOptimized ? "optimized" : "engine",
-                    cfg.noInputDelay ? "no added input bookkeeping" : "legacy frame order"
+                    cfg.noInputDelay ? "game-first" : "counters-first"
                 );
             }
             else if (m_page == Culling) {
@@ -887,7 +855,7 @@ namespace {
                     text, sizeof(text),
                     "scene  %u skipped / %u tested per second\n"
                     "particles  %u skipped / %u tested per second\n"
-                    "empty batches skipped %llu   |   editor culls %u/s",
+                    "empty batches %llu   |   editor culls %u/s",
                     counters.sceneCulledPerSec.load(std::memory_order_relaxed),
                     counters.sceneExaminedPerSec.load(std::memory_order_relaxed),
                     counters.particleSkipsPerSec.load(std::memory_order_relaxed),
@@ -901,40 +869,37 @@ namespace {
                     text, sizeof(text),
                     "%s   |   %s\n"
                     "sprites  %llu skipped / %llu tested\n"
-                    "particles  %llu skipped / %llu tested   |   %u/s now",
+                    "particles  %llu skipped / %llu tested",
                     reborn::inEditor() ? "EDITOR ACTIVE" : "not in the editor",
                     cfg.editorCulling ? cullName(cfg.editorCull) : "off",
                     static_cast<unsigned long long>(counters.editorSpriteDrawsSkipped.load(std::memory_order_relaxed)),
                     static_cast<unsigned long long>(counters.editorSpritesExamined.load(std::memory_order_relaxed)),
                     static_cast<unsigned long long>(counters.editorParticleDrawsSkipped.load(std::memory_order_relaxed)),
-                    static_cast<unsigned long long>(counters.editorParticlesExamined.load(std::memory_order_relaxed)),
-                    counters.editorCulledPerSec.load(std::memory_order_relaxed)
+                    static_cast<unsigned long long>(counters.editorParticlesExamined.load(std::memory_order_relaxed))
                 );
             }
             else if (m_page == Input) {
                 std::snprintf(
                     text, sizeof(text),
-                    "frame-end bookkeeping %llu frames   |   scheduler %llu   |   order: %s",
+                    "frame-end work %llu frames   |   scheduler %llu   |   %s",
                     static_cast<unsigned long long>(counters.deferredBookkeeping.load(std::memory_order_relaxed)),
                     static_cast<unsigned long long>(counters.schedulerUpdates.load(std::memory_order_relaxed)),
-                    cfg.noInputDelay ? "game update first" : "counters first"
+                    cfg.noInputDelay ? "game first" : "counters first"
                 );
             }
             else if (m_page == Diagnostics) {
                 double const low = stats.onePercentLowFps(240);
                 std::snprintf(
                     text, sizeof(text),
-                    "%u FPS | avg %.1f ms | p95 %.1f ms | 1%% low %.0f\n"
-                    "logic %u/s | draw %.2f ms | %s\n"
-                    "batches %llu | quads %llu | empty %llu",
+                    "%u FPS | avg %.1f ms | 1%% low %.0f   |   %s\n"
+                    "batches %llu | quads %llu | empty %llu | logic %u/s",
                     counters.fps.load(std::memory_order_relaxed),
-                    stats.averageFrameMs(120), stats.percentileFrameMs(120, 0.95), low,
-                    counters.logicFps.load(std::memory_order_relaxed),
-                    stats.averageWorkMs(60),
+                    stats.averageFrameMs(120), low,
                     bottleneckLabel(static_cast<reborn::Bottleneck>(counters.bottleneck.load(std::memory_order_relaxed))),
                     static_cast<unsigned long long>(counters.batchDraws.load(std::memory_order_relaxed)),
                     static_cast<unsigned long long>(counters.batchQuads.load(std::memory_order_relaxed)),
-                    static_cast<unsigned long long>(counters.emptyBatchDrawsSkipped.load(std::memory_order_relaxed))
+                    static_cast<unsigned long long>(counters.emptyBatchDrawsSkipped.load(std::memory_order_relaxed)),
+                    counters.logicFps.load(std::memory_order_relaxed)
                 );
             }
             else {
