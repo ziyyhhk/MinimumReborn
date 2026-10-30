@@ -207,10 +207,17 @@ namespace {
         return label;
     }
 
+    // The small bespoke nine-slice files are used when the loader has made them available.
+    // GD's own square02b_001.png is the guaranteed fallback: it ships with the game, is a
+    // real rounded nine-slice and tints correctly, so a missing resource can never leave a
+    // control without a visible hit area.
     CCScale9Sprite* makeCard(float width, float height) {
         auto* card = CCScale9Sprite::create("reborn-card.png", {0.f, 0.f, 96.f, 96.f}, {24.f, 24.f, 24.f, 24.f});
+        if (!card) card = CCScale9Sprite::create("square02b_001.png", {0.f, 0.f, 80.f, 80.f});
         if (!card) return nullptr;
         card->setContentSize({width, height});
+        card->setColor(ccc3(18, 22, 36));
+        card->setOpacity(190);
         return card;
     }
 
@@ -219,6 +226,7 @@ namespace {
             selected ? "reborn-button-selected.png" : "reborn-button.png",
             {0.f, 0.f, 64.f, 64.f}, {20.f, 20.f, 20.f, 20.f}
         );
+        if (!bg) bg = CCScale9Sprite::create("square02b_001.png", {0.f, 0.f, 80.f, 80.f});
         if (!bg) return nullptr;
         bg->setContentSize({width, height});
         bg->setColor(selected ? ccc3(88, 132, 245) : ccc3(37, 43, 63));
