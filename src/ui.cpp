@@ -1,5 +1,4 @@
 #include <Geode/Geode.hpp>
-#include <Geode/modify/EditorPauseLayer.hpp>
 #include <Geode/modify/PauseLayer.hpp>
 #include <Geode/ui/GeodeUI.hpp>
 #include <Geode/ui/OverlayManager.hpp>
@@ -386,6 +385,20 @@ namespace {
             // which reads as a completely different UI language.
             if (!Popup::init(kPopupWidth, kPopupHeight, "square01_001.png")) return false;
             this->setID("minimum-reborn-popup"_spr);
+
+            // On a small window the panel would otherwise be wider than the screen, so the
+            // whole popup is scaled down to fit. Touch handling follows the node transform,
+            // so the hit boxes scale with it.
+            auto* director = CCDirector::get();
+            if (director) {
+                float const available = director->getVisibleSize().width;
+                float const wanted = kPopupWidth + 24.f;
+                if (available > 1.f && available < wanted) {
+                    float const fit = available / wanted;
+                    this->setScale(fit);
+                    this->setAnchorPoint({0.5f, 0.5f});
+                }
+            }
 
             this->buildHeader();
             this->buildNav();
@@ -1140,15 +1153,3 @@ class $modify(RebornPauseLayer, PauseLayer) {
     }
 };
 
-// The editor has its own pause layer, so the panel would otherwise be unreachable while the
-// editor counters on the Editor page are the only ones worth looking at.
-class $modify(RebornEditorPauseLayer, EditorPauseLayer) {
-    void customSetup() {
-        EditorPauseLayer::customSetup();
-        installPanelButton(this, this, menu_selector(RebornEditorPauseLayer::onOpenReborn));
-    }
-
-    void onOpenReborn(CCObject*) {
-        openRebornPanel();
-    }
-};

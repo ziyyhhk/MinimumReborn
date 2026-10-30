@@ -344,6 +344,25 @@ namespace {
 
     HotCounts g_hot;
 
+    // Per-frame snapshot of the switches the draw hooks consult. Reading them costs one bool
+    // test per node instead of a config lookup plus several field reads, which matters
+    // because the sprite hook runs tens of thousands of times per frame. Everything is
+    // refreshed once in renderFrameBegin(), on the same thread that draws.
+    struct Flags {
+        bool any = false;
+        bool spriteFastPath = false;
+        bool sceneCull = false;
+        bool editorCull = false;
+        bool particleIdle = false;
+        bool particleCull = false;
+        bool editor = false;
+        double sceneMargin = 160.0;
+        double editorMargin = 160.0;
+        double particleMargin = 128.0;
+    };
+
+    Flags g_flags;
+
     void add(std::atomic<std::uint64_t>& target, std::uint64_t& source) {
         if (source == 0) return;
         target.fetch_add(source, std::memory_order_relaxed);
@@ -376,11 +395,29 @@ namespace reborn {
 
     void renderFrameBegin() {
         ++g_frameId;
+        {
+            auto const& c = config();
+            bool const on = c.enabled && c.rendererOptimized;
+            g_flags.any = on && (c.spriteFastPath
+                              || c.sceneCull != CullMode::Off
+                              || (c.cullOffscreenParticles && c.particleCull != CullMode::Off)
+                              || c.skipIdleParticles
+                              || (c.editorCulling && c.editorCull != CullMode::Off));
+            g_flags.spriteFastPath = on && c.spriteFastPath;
+            g_flags.sceneCull = on && c.sceneCull != CullMode::Off;
+            g_flags.editorCull = on && c.editorCulling && c.editorCull != CullMode::Off;
+            g_flags.particleIdle = on && c.skipIdleParticles;
+            g_flags.particleCull = on && c.cullOffscreenParticles && c.particleCull != CullMode::Off;
+            g_flags.sceneMargin = c.sceneCullMargin;
+            g_flags.editorMargin = c.editorCullMargin;
+            g_flags.particleMargin = c.particleCullMargin;
+        }
         g_frameCreatedBase = counters().particleSystemsCreated.load(std::memory_order_relaxed);
         // One cheap scene check per frame, shared by every draw hook. The editor is a
         // separate scene from PlayLayer; both use the same draw hooks, so the culling
         // policy is selected here rather than by installing editor-only hooks.
         g_editorFrame = LevelEditorLayer::get() != nullptr;
+        g_flags.editor = g_editorFrame;
 
         // The visible rect lives in the scene's coordinate space, which is the space
         // convertToWorldSpace() reports into. If it is not usable, every test answers "draw".
@@ -445,9 +482,8 @@ namespace reborn {
 // circle test and - only on a miss - three convertToWorldSpace calls for the parent.
 struct SpriteDrawFastPath : Modify<SpriteDrawFastPath, CCSprite> {
     void draw() {
-        auto const& cfg = reborn::config();
-        if (cfg.enabled && cfg.rendererOptimized) {
-            if (cfg.spriteFastPath) {
+        if (g_flags.any) {
+            if (g_flags.spriteFastPath) {
                 // getDisplayedOpacity is the opacity the node actually renders with, i.e. its
                 // own opacity multiplied down the parent chain. A whole faded-out layer
                 // therefore stops submitting quads instead of paying a zero-alpha blend for
@@ -464,20 +500,20 @@ struct SpriteDrawFastPath : Modify<SpriteDrawFastPath, CCSprite> {
                     return;
                 }
             }
-            if (reborn::inEditor()) {
+            if (g_flags.editor) {
                 // The editor has its own policy. Object data, selection and serialization are
                 // never involved: this only decides whether a sprite's draw is submitted.
-                if (cfg.editorCulling && cfg.editorCull != reborn::CullMode::Off) {
+                if (g_flags.editorCull) {
                     ++g_hot.editorSpritesExamined;
-                    if (spriteOffScreen(this, cfg.editorCullMargin)) {
+                    if (spriteOffScreen(this, g_flags.editorMargin)) {
                         ++g_hot.editorSpritesSkipped;
                         return;
                     }
                 }
             }
-            else if (cfg.sceneCull != reborn::CullMode::Off) {
+            else if (g_flags.sceneCull) {
                 ++g_hot.sceneExamined;
-                if (spriteOffScreen(this, cfg.sceneCullMargin)) {
+                if (spriteOffScreen(this, g_flags.sceneMargin)) {
                     ++g_hot.sceneSkipped;
                     return;
                 }
@@ -526,8 +562,7 @@ struct ParticleDrawFastPath : Modify<ParticleDrawFastPath, CCParticleSystemQuad>
     }
 
     void draw() {
-        auto const& cfg = reborn::config();
-        if (cfg.enabled && cfg.rendererOptimized) {
+        if (g_flags.any) {
             // Same zero-pixel cases as the sprite fast-out: a system at zero opacity or zero
             // scale cannot paint anything, so its full quad upload and GL state setup is
             // wasted. Simulation still updates; only this draw submission is skipped. The
@@ -537,22 +572,22 @@ struct ParticleDrawFastPath : Modify<ParticleDrawFastPath, CCParticleSystemQuad>
                 ++g_hot.particleInvisibleSkipped;
                 return;
             }
-            if (cfg.skipIdleParticles && m_uParticleCount == 0) {
+            if (g_flags.particleIdle && m_uParticleCount == 0) {
                 ++g_hot.particleIdleSkipped;
                 return;
             }
-            if (m_uParticleCount > 0 && reborn::inEditor()) {
-                if (cfg.editorCulling && cfg.editorCull != reborn::CullMode::Off) {
+            if (m_uParticleCount > 0 && g_flags.editor) {
+                if (g_flags.editorCull) {
                     ++g_hot.editorParticlesExamined;
-                    if (particleOffScreen(this, cfg.editorCullMargin)) {
+                    if (particleOffScreen(this, g_flags.editorMargin)) {
                         ++g_hot.editorParticlesSkipped;
                         return;
                     }
                 }
             }
-            else if (cfg.cullOffscreenParticles && cfg.particleCull != reborn::CullMode::Off && m_uParticleCount > 0) {
+            else if (g_flags.particleCull && m_uParticleCount > 0) {
                 ++g_hot.particleExamined;
-                if (particleOffScreen(this, cfg.particleCullMargin)) {
+                if (particleOffScreen(this, g_flags.particleMargin)) {
                     ++g_hot.particleOffscreenSkipped;
                     return;
                 }
