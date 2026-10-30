@@ -417,6 +417,13 @@ struct ParticleDrawFastPath : Modify<ParticleDrawFastPath, CCParticleSystemQuad>
     void draw() {
         auto const& cfg = reborn::config();
         if (cfg.enabled && cfg.rendererOptimized) {
+            // Same zero-pixel cases as the sprite fast-out: a system at zero opacity or zero
+            // scale cannot paint anything, so its full quad upload and GL state setup is
+            // wasted. Simulation still updates; only this draw submission is skipped.
+            if (this->getOpacity() == 0 || this->getScaleX() == 0.f || this->getScaleY() == 0.f) {
+                ++reborn::counters().invisibleParticleDrawsSkipped;
+                return;
+            }
             if (cfg.skipIdleParticles && m_uParticleCount == 0) {
                 ++reborn::counters().idleParticleDrawsSkipped;
                 return;

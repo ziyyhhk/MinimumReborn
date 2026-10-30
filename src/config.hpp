@@ -88,6 +88,7 @@ namespace reborn {
     // Proof-of-work counters. Monotonic; the overlay shows deltas per second plus totals.
     struct Counters {
         std::atomic<std::uint64_t> invisibleSpriteDrawsSkipped{0};
+        std::atomic<std::uint64_t> invisibleParticleDrawsSkipped{0};
         std::atomic<std::uint64_t> idleParticleDrawsSkipped{0};
         std::atomic<std::uint64_t> offscreenParticleDrawsSkipped{0};
         std::atomic<std::uint64_t> particlePoolsCapped{0};

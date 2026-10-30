@@ -213,7 +213,12 @@ namespace {
     // (a 96px card becomes a 24px base sprite), which makes hard-coded source rects and
     // cap insets unreliable. square02b_001.png is 80x80 in every GD install and is what
     // GD itself uses for menu buttons, so it always renders as a rounded control.
+    //
+    // The inset must stay below half the content height. With a 20px-tall pill an inset of
+    // 10 leaves no middle row at all, and the two caps overlap into a visible seam; a
+    // smaller cap keeps the flat centre intact.
     CCScale9Sprite* makeNineSlice(float width, float height, float inset, bool selected) {
+        inset = std::min(inset, std::max(2.f, height * 0.28f));
         auto* bg = CCScale9Sprite::create(
             "square02b_001.png", {0.f, 0.f, 80.f, 80.f}, {inset, inset, inset, inset}
         );
@@ -225,16 +230,8 @@ namespace {
         return bg;
     }
 
-    CCScale9Sprite* makeCard(float width, float height) {
-        auto* card = makeNineSlice(width, height, 12.f, false);
-        if (!card) return nullptr;
-        card->setColor(ccc3(5, 8, 16));
-        card->setOpacity(110);
-        return card;
-    }
-
     CCScale9Sprite* makeButtonBackground(float width, float height, bool selected) {
-        return makeNineSlice(width, height, 10.f, selected);
+        return makeNineSlice(width, height, 8.f, selected);
     }
 
     enum class CycleKind {
@@ -322,12 +319,19 @@ namespace {
 
             if (auto* caption = makeLabel("ACTIVE PROFILE", "chatFont.fnt", 0.26f, 145, true)) {
                 caption->setAnchorPoint({1.f, 0.5f});
-                m_mainLayer->addChildAtPosition(caption, Anchor::Center, ccp(188.f, 106.f));
+                m_mainLayer->addChildAtPosition(caption, Anchor::Center, ccp(148.f, 106.f));
             }
             m_headerProfile = makeLabel("Balanced", "goldFont.fnt", 0.36f, 255, true);
             if (m_headerProfile) {
                 m_headerProfile->setAnchorPoint({1.f, 0.5f});
-                m_mainLayer->addChildAtPosition(m_headerProfile, Anchor::Center, ccp(188.f, 94.f));
+                m_mainLayer->addChildAtPosition(m_headerProfile, Anchor::Center, ccp(148.f, 94.f));
+            }
+
+            // One-pixel rule keeps the header visually attached to the tab row without
+            // drawing another card behind the content.
+            if (auto* line = CCLayerColor::create(ccc4(255, 255, 255, 30), 356, 1)) {
+                line->setAnchorPoint({0.5f, 0.5f});
+                m_mainLayer->addChildAtPosition(line, Anchor::Center, ccp(0.f, 84.f));
             }
         }
 
@@ -442,11 +446,6 @@ namespace {
             m_pageRoot->setContentSize({kPageWidth, kPageHeight});
             m_pageRoot->setAnchorPoint({0.5f, 0.5f});
             m_mainLayer->addChildAtPosition(m_pageRoot, Anchor::Center, ccp(0.f, -5.f));
-
-            if (auto* card = makeCard(kPageWidth, kPageHeight)) {
-                card->setPosition({kPageWidth / 2.f, kPageHeight / 2.f});
-                m_pageRoot->addChild(card);
-            }
 
             m_pageMenu = CCMenu::create();
             m_pageMenu->setPosition({kPageWidth / 2.f, kPageHeight / 2.f});
@@ -570,21 +569,23 @@ namespace {
         }
 
         void buildRender() {
-            this->cycleAt(0.f, 52.f, 230.f, "Renderer", CycleKind::Renderer, "renderer-mode",
+            this->cycleAt(0.f, 56.f, 230.f, "Renderer", CycleKind::Renderer, "renderer-mode",
                 this->makeCycleAction(CycleKind::Renderer, "renderer-mode"));
 
-            this->toggleAt(-150.f, 24.f, "sprite-fast-path", "Sprite draw fast-out");
-            this->toggleAt(-150.f, 0.f, "skip-idle-particles", "Skip idle particle draws");
-            this->toggleAt(-150.f, -24.f, "cap-particles", "Cap particle pool size");
+            this->toggleAt(-150.f, 32.f, "sprite-fast-path", "Sprite draw fast-out");
+            this->toggleAt(-150.f, 8.f, "skip-idle-particles", "Skip idle particle draws");
+            this->toggleAt(-150.f, -16.f, "cap-particles", "Cap particle pool size");
 
-            this->cycleAt(-58.f, -52.f, 170.f, "Particle cap", CycleKind::ParticleCap, "particle-cap",
+            this->cycleAt(-58.f, -44.f, 170.f, "Particle cap", CycleKind::ParticleCap, "particle-cap",
                 this->makeCycleAction(CycleKind::ParticleCap, "particle-cap"));
 #ifdef GEODE_IS_WINDOWS
-            this->toggleAt(86.f, -52.f, "render-gate", "Render gate");
+            this->toggleAt(86.f, -44.f, "render-gate", "Render gate");
 #endif
+            m_liveLabel = textAt("--", 0.f, -58.f, 0.25f, "chatFont.fnt");
+            if (m_liveLabel) m_liveLabel->setAlignment(kCCTextAlignmentCenter);
             textAt(
-                "Draw-only: order, blending, glow, clipping and shaders untouched.",
-                0.f, -70.f, 0.25f, "chatFont.fnt", 150
+                "Draw-only: order, blending, glow and shaders untouched.",
+                0.f, -70.f, 0.22f, "chatFont.fnt", 150
             );
         }
 
@@ -848,6 +849,20 @@ namespace {
                     counters.logicFps.load(std::memory_order_relaxed),
                     cfg.rendererOptimized ? "optimized" : "engine",
                     cfg.noInputDelay ? "game-first" : "counters-first"
+                );
+            }
+            else if (m_page == Render) {
+                auto const sprites = counters.invisibleSpriteDrawsSkipped.load(std::memory_order_relaxed)
+                                   + counters.sceneSpriteDrawsSkipped.load(std::memory_order_relaxed);
+                auto const particles = counters.offscreenParticleDrawsSkipped.load(std::memory_order_relaxed)
+                                     + counters.idleParticleDrawsSkipped.load(std::memory_order_relaxed)
+                                     + counters.invisibleParticleDrawsSkipped.load(std::memory_order_relaxed);
+                std::snprintf(
+                    text, sizeof(text),
+                    "skipped %llu sprites   |   %llu particle draws   |   %llu empty batches",
+                    static_cast<unsigned long long>(sprites),
+                    static_cast<unsigned long long>(particles),
+                    static_cast<unsigned long long>(counters.emptyBatchDrawsSkipped.load(std::memory_order_relaxed))
                 );
             }
             else if (m_page == Culling) {
