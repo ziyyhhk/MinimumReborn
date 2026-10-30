@@ -1,5 +1,33 @@
 # Changelog
 
+## v1.1.0 (2026-10-30)
+
+Phase 2: real visibility culling and diagnostics.
+
+* **Renderer Mode setting** (`Engine` / `Optimized`). Engine takes the game's draw path
+  unchanged for every node; Optimized installs the mod's draw path. Default profile now uses
+  Engine, so the stock renderer is always one click away.
+* **Scene object culling** (`Off` / `Conservative` / `Aggressive`). Skips the draw call of
+  sprites whose whole quad is outside the viewport plus a margin (160 / 16 world units). Uses
+  a per-frame parent world-basis cache and a rotation-safe radius; every uncertain case draws.
+  Covers decorations, glow sprites and trails because they share the sprite path.
+* **Particle culling modes** (`Off` / `Conservative` / `Aggressive`) with a 128 / 8 unit
+  margin, plus a center-inside shortcut so visible systems cost one circle test. Simulation is
+  never skipped.
+* **Frame viewport snapshot and transform cache** rebuilt once per `drawScene`; nothing is
+  kept across frames.
+* **Telemetry**: examined vs culled counts for scene and particle culling, per second and as
+  totals, in the overlay and the pause panel. Counts describe tests and skipped draws, not GPU
+  work.
+* **In-game benchmark** (pause panel, Bench button): records drawn frames for the configured
+  duration and reports average FPS, average/p50/p95 frame time, 1% low, variability, and the
+  culling deltas over the same window; also written to the Geode log. Fixed 16384-sample
+  buffer, no allocation while recording.
+* **Adaptive particle cap** (opt-in, off by default): steps the pool down while drawn frames
+  stay slow and relaxes it when they recover. Never touches timing, physics or input.
+* Pause panel rebuilt: larger layout, Renderer/Scene/Particles cycle buttons showing the state
+  actually in effect, live culling rates, benchmark result line.
+
 ## v1.0.0 (2026-10-30)
 
 First build.
