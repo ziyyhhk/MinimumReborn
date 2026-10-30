@@ -4,8 +4,9 @@ A rendering-focused optimization mod for Geometry Dash 2.2081, built with C++20 
 Geode SDK. It is a successor to [Minimum](https://github.com/ziyyhhk/Minimum), with the
 render path as the main subject rather than a settings collection.
 
-**Status: source complete, build verification in progress.** See "Verification" below for
-exactly what has and has not been proven.
+**Status: v1.0.0 source and Windows build verified on GitHub Actions.** The `.geode` is built
+by the workflow in this repository. See "Verification" below for exactly what has and has not
+been proven — in particular, no in-game performance numbers have been measured yet.
 
 ## What it does
 
@@ -108,8 +109,8 @@ What the numbers mean:
 
 ## Build
 
-Requirements: CMake ≥ 3.21, a C++20 compiler, and the Geode SDK (5.10 or newer) with
-`GEODE_SDK` pointing at it.
+Requirements: CMake ≥ 3.21, a C++20 compiler, and the Geode SDK 5.11.2 with `GEODE_SDK`
+pointing at it (`mod.json` pins `"geode": "5.11.2"`; an older SDK refuses to configure).
 
 ```sh
 cmake -B build -DCMAKE_BUILD_TYPE=Release
@@ -129,10 +130,14 @@ folder shortcut) and start the game.
 
 ## Verification
 
-* Source is complete and compiles on GitHub Actions (Windows). Check the latest workflow run
-  for the actual result — do not rely on this sentence.
-* **No in-game benchmark has been run for this repository yet.** No FPS or frame-time
-  improvement figures are claimed. The overlay exists to measure them on real hardware.
+* The Windows build succeeds on GitHub Actions: workflow run
+  [41006565096](https://github.com/ziyyhhk/MinimumReborn/actions/runs/41006565096) completed
+  green and uploaded `MinimumReborn-Windows`. The package was inspected: it contains
+  `mod.json`, `about.md`, `changelog.md` and `ziyyhhk.minimum-reborn.dll` (181 KB, Release,
+  LTO).
+* **No in-game benchmark has been run for this repository yet.** The mod has not been loaded
+  in Geometry Dash as of this commit, so neither startup stability nor any FPS or frame-time
+  improvement is claimed. The overlay exists to measure them on real hardware.
 * The skip paths are guarded so a mis-detection cannot crash the game: off-screen particle
   culling answers "draw" for degenerate transforms, NaN values, free/grouped systems; sprite
   fast-out only fires for zero-pixel cases.
