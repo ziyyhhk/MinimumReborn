@@ -35,6 +35,15 @@ draw path actually skips.
   off-screen skips.
 * **Rendering page** now exposes the adaptive particle cap toggle that already existed in the
   settings but had no control in the panel.
+* **Flat shapes come from a mod-owned 16x16 solid sprite.** Stretching GD's trimmed square and
+  `CCLayerColor` were both tried and both produced artifacts; see the report for the evidence.
+* **Second entry point**: the panel button is installed on `EditorPauseLayer` as well, so the
+  editor counters are reachable while the editor is the active scene.
+* **Verified live**: all six pages, tab switching, profile chips (Default and Balanced
+  applied), toggles, renderer cycle, benchmark start/stop, the Reset confirmation and the
+  All Settings hand-off. Engine vs Optimized A/B numbers are in `DEVELOPMENT_REPORT.md`
+  section 27 - no FPS gain at the 60 cap, +0.07 ms CPU per frame, 1,830 zero-pixel draws
+  skipped per 10 s.
 
 ## v1.2.1 (2026-10-30)
 

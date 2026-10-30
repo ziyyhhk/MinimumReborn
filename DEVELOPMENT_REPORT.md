@@ -475,3 +475,30 @@ in the mod rather than moving it somewhere else.
 documentation), `src/rendering.hpp` (`renderFrameEnd`), `src/frame_gate.cpp` (publish once per
 frame), `src/config.hpp` (`invisibleParticleDrawsSkipped`), `resources/reborn-pixel.png` (new),
 `mod.json` + `CMakeLists.txt` (version), `CHANGELOG.md`, `README.md`, this report.
+
+
+## 31. After the phase 5 report: editor reachability and what blocked it
+
+Two more panel actions were exercised live and work: **Reset** opens GD's own confirmation
+alert ("Restore every setting to the Balanced defaults?") and only writes settings after
+Reset is pressed, and **All Settings** closes this panel before handing off to the native
+Geode settings page, so the two never stack.
+
+The panel was then given a second entry point on `EditorPauseLayer`, because the Editor page
+counters can only be populated while the editor is the active scene and the gameplay pause
+layer is not present there.
+
+Opening the editor pause menu on this machine crashes - but not in this mod. The Geode crash
+report for `2026-10-30_12-10-09` records:
+
+    Faulty Module: .../geode/unzipped/hjfod.betteredit/hjfod.betteredit.dll
+    Faulty Mod: BetterEdit v6.10.0-beta.6 (hjfod.betteredit)
+    Exception Code: c0000005 (EXCEPTION_ACCESS_VIOLATION)
+    Stack: hjfod.betteredit.dll+0x4534c ... undefined0.editormusic.dll+0x230d3
+           GeometryDash.exe (EditorUI::onPause+0x396) ... EditorUI::keyDown+0x144e
+
+No `ziyyhhk.minimum-reborn` frame appears anywhere in that trace; the faulting instruction is
+inside BetterEdit's module, reached from `EditorUI::onPause`. So the editor-side counters
+(editor sprites/particles tested and skipped) remain **unverified in a live editor session**,
+and that is recorded as a gap rather than claimed as working. Everything else on the Editor
+page is the same code path as the other pages, which were verified.
