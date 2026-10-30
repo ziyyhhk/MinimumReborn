@@ -326,6 +326,10 @@ namespace {
         float width = 220.f;
     };
 
+    // One panel at a time. Defined before the class because init() registers itself
+    // and onExit() clears the entry.
+    RebornPopup* g_openPanel = nullptr;
+
     class RebornPopup : public Popup {
     protected:
         enum Page : int {
@@ -1152,7 +1156,7 @@ namespace {
     // One panel at a time. Two popups would mean two live schedules and two sets of controls
     // writing the same settings; the scene graph cannot be searched cheaply here (this
     // binding has no recursive lookup), so the open panel registers itself.
-    RebornPopup* g_openPanel = nullptr;
+    // (g_openPanel is defined above the class, where init() first uses it.)
 
     void openRebornPanel() {
         if (g_openPanel) return;
