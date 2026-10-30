@@ -407,8 +407,15 @@ namespace {
             int const page = static_cast<CCNode*>(sender)->getTag();
             if (page < 0 || page >= static_cast<int>(PageCount) || page == static_cast<int>(m_page)) return;
             m_page = static_cast<Page>(page);
-            this->buildPage();
             this->refreshTabs();
+            // The sender lives inside the page tree that buildPage() replaces. Rebuilding in
+            // the same callback would free the menu item while CCMenu is still dispatching
+            // its touch release. Defer to the next tick instead.
+            this->scheduleOnce(schedule_selector(RebornPopup::applyTab), 0.f);
+        }
+
+        void applyTab(float) {
+            this->buildPage();
         }
 
         void refreshTabs() {
