@@ -456,11 +456,14 @@ namespace {
 
         double minX = 1e300, minY = 1e300, maxX = -1e300, maxY = -1e300;
         for (unsigned int i = 0; i < quads; ++i) {
-            V3F_C4B_T2F_Quad const& q = quad[i];
-            CCVertex const* corners[4] = {&q.bl.vertices, &q.br.vertices, &q.tr.vertices, &q.tl.vertices};
-            for (CCVertex const* v : corners) {
-                double const x = v->x;
-                double const y = v->y;
+            // The quad types are not exported by name in these bindings, so the corners are
+            // read through the element type the atlas hands back.
+            auto const& q = quad[i];
+            double const xs[4] = {q.bl.vertices.x, q.br.vertices.x, q.tr.vertices.x, q.tl.vertices.x};
+            double const ys[4] = {q.bl.vertices.y, q.br.vertices.y, q.tr.vertices.y, q.tl.vertices.y};
+            for (int c = 0; c < 4; ++c) {
+                double const x = xs[c];
+                double const y = ys[c];
                 if (!std::isfinite(x) || !std::isfinite(y)) return false;
                 if (x < minX) minX = x;
                 if (x > maxX) maxX = x;
