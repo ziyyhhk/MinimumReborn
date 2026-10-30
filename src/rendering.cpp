@@ -535,6 +535,18 @@ struct SpriteDrawFastPath : Modify<SpriteDrawFastPath, CCSprite> {
                     ++g_hot.invisibleSprites;
                     return;
                 }
+                // Inherited opacity, guarded by the blend equation. A node under a faded-out
+                // layer renders with displayed opacity 0, but that only guarantees zero
+                // contribution when the blend multiplies the source by its alpha, which is
+                // what GL_SRC_ALPHA as the source factor does (standard alpha blend and
+                // additive blend both use it). Premultiplied blends use GL_ONE there, so a
+                // program that ignores vertex alpha could still paint - those nodes are
+                // drawn, and the skip stays provably correct.
+                if (this->getDisplayedOpacity() == 0
+                    && this->getBlendFunc().src == GL_SRC_ALPHA) {
+                    ++g_hot.invisibleSprites;
+                    return;
+                }
                 CCSize const size = this->getContentSize();
                 if (size.width <= 0.f || size.height <= 0.f) {
                     ++g_hot.invisibleSprites;
