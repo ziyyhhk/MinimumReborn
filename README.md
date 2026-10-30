@@ -4,7 +4,7 @@ A rendering-focused optimization mod for Geometry Dash 2.2081, built with C++20 
 Geode SDK. It is a successor to [Minimum](https://github.com/ziyyhhk/Minimum), with the
 render path as the main subject rather than a settings collection.
 
-**Status: v1.4.2, built by GitHub Actions and run in Geometry Dash on a Windows laptop.**
+**Status: v1.5.0, built by GitHub Actions and run in Geometry Dash on a Windows laptop.**
 The runtime evidence in this README and in `DEVELOPMENT_REPORT.md` comes from that machine,
 not from estimates. It also changed the design: GD batches its level objects, so the
 per-sprite scene cull cannot see them. Scene culling is opt-in and off in the default
@@ -398,3 +398,30 @@ path this mod touches.
   stop uploading an empty quad buffer; particle pools are bounded so a burst allocates less;
   and the mod's own per-frame bookkeeping runs after the game's update and after the scene
   draw when No Additional Input Delay is on.
+
+
+## 11. v1.5.0 - reaching the batched path
+
+The measured history of this mod kept hitting the same wall: GD submits level objects through
+`CCSpriteBatchNode`, which draws all of its children in one call and never runs
+`CCSprite::draw` for them, so every per-sprite optimization was blind to the bulk of a level.
+The Culling page now has a control that addresses that directly.
+
+`Batch culling` (off by default) measures the batch's own extent at draw time: the
+axis-aligned box of the vertex buffer that `visit()` filled for this frame, its four corners
+transformed through the node's world basis, tested against the viewport plus a margin floor of
+64 world units. If the result is entirely outside, the batch's single draw call is skipped -
+program activation, attribute pointers, texture bind, the draw and everything it would have
+rasterized. No quad is rewritten, nothing is reordered, and simulation is untouched.
+
+The bounds are deliberately conservative. The buffer is scanned in full or not at all under a
+fixed per-frame budget of 24,000 quads, so the cost of the feature is capped by that number
+rather than by the size of the level, and any batch that cannot be measured exactly is drawn.
+All four vertices of every quad are folded into the box, so a rotated child cannot escape it,
+and a missing atlas, an empty buffer, a non-finite vertex or a degenerate box all answer
+"draw".
+
+Honest status: this is new, it is off by default, and its gain has **not** been measured in a
+live level yet - the user asked for code work rather than more test launches. The Culling page
+reports `culled / measured / drawn` so the first person to enable it can see exactly how much
+of a given level the batch path can remove, instead of taking a claim for it.
