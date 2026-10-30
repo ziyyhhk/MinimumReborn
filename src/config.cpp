@@ -255,6 +255,11 @@ namespace reborn {
         int64_t budget = mod->getSettingValue<int64_t>("spawn-budget");
         c.spawnBudget = static_cast<unsigned int>(std::clamp<int64_t>(budget, 0, 200));
 
+        c.editorCulling = mod->getSettingValue<bool>("editor-culling");
+        c.editorCull = parseCullMode(mod->getSettingValue<std::string>("editor-cull-mode"));
+        c.editorCullMargin = marginFor(c.editorCull, 160.0, 16.0);
+        c.noInputDelay = mod->getSettingValue<bool>("no-input-delay");
+
 #ifdef GEODE_IS_WINDOWS
         c.renderGate = mod->getSettingValue<bool>("render-gate");
         int64_t gateFps = mod->getSettingValue<int64_t>("render-gate-fps");
@@ -309,6 +314,9 @@ namespace reborn {
         mod->setSettingValue<int64_t>("particle-cap", static_cast<int64_t>(kDefaultParticleCap));
         mod->setSettingValue<bool>("adaptive-cap", false);
         mod->setSettingValue<int64_t>("spawn-budget", 0);
+        mod->setSettingValue<bool>("no-input-delay", true);
+        mod->setSettingValue<bool>("editor-culling", true);
+        mod->setSettingValue<std::string>("editor-cull-mode", "Conservative");
 #ifdef GEODE_IS_WINDOWS
         mod->setSettingValue<bool>("render-gate", false);
         mod->setSettingValue<int64_t>("render-gate-fps", 60);
@@ -362,6 +370,10 @@ namespace reborn {
         (void)now;
         return true;
 #endif
+    }
+
+    bool cachedForeground() {
+        return g_focused;
     }
 
     bool backgroundThrottled(std::chrono::steady_clock::time_point now) {

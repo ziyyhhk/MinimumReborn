@@ -91,6 +91,7 @@ namespace {
     ViewRect g_view;
     unsigned g_frameId = 1;
     std::uint64_t g_frameCreatedBase = 0;
+    bool g_editorFrame = false;
 
     // Local -> world mapping of a node: world = origin + x * ux + y * uy.
     struct Basis {
@@ -289,6 +290,10 @@ namespace reborn {
     void renderFrameBegin() {
         ++g_frameId;
         g_frameCreatedBase = counters().particleSystemsCreated.load(std::memory_order_relaxed);
+        // One cheap scene check per frame, shared by every draw hook. The editor is a
+        // separate scene from PlayLayer; both use the same draw hooks, so the culling
+        // policy is selected here rather than by installing editor-only hooks.
+        g_editorFrame = LevelEditorLayer::get() != nullptr;
 
         // The visible rect lives in the scene's coordinate space, which is the space
         // convertToWorldSpace() reports into. If it is not usable, every test answers "draw".
@@ -315,11 +320,18 @@ namespace reborn {
 
     unsigned int effectiveParticleCap();  // defined in config.cpp (adaptive step included)
 
+    bool inEditor() {
+        return g_editorFrame;
+    }
+
     bool visibilityCullingActive() {
         auto const& cfg = config();
-        return cfg.enabled && cfg.rendererOptimized
-            && (cfg.sceneCull != CullMode::Off
-                || (cfg.cullOffscreenParticles && cfg.particleCull != reborn::CullMode::Off));
+        if (!cfg.enabled || !cfg.rendererOptimized) return false;
+        if (g_editorFrame) {
+            return cfg.editorCulling && cfg.editorCull != CullMode::Off;
+        }
+        return cfg.sceneCull != CullMode::Off
+            || (cfg.cullOffscreenParticles && cfg.particleCull != reborn::CullMode::Off);
     }
 }
 
@@ -341,7 +353,18 @@ struct SpriteDrawFastPath : Modify<SpriteDrawFastPath, CCSprite> {
                     return;
                 }
             }
-            if (cfg.sceneCull != reborn::CullMode::Off) {
+            if (reborn::inEditor()) {
+                // The editor has its own policy. Object data, selection and serialization are
+                // never involved: this only decides whether a sprite's draw is submitted.
+                if (cfg.editorCulling && cfg.editorCull != reborn::CullMode::Off) {
+                    ++reborn::counters().editorSpritesExamined;
+                    if (spriteOffScreen(this, cfg.editorCullMargin)) {
+                        ++reborn::counters().editorSpriteDrawsSkipped;
+                        return;
+                    }
+                }
+            }
+            else if (cfg.sceneCull != reborn::CullMode::Off) {
                 ++reborn::counters().sceneSpritesExamined;
                 if (spriteOffScreen(this, cfg.sceneCullMargin)) {
                     ++reborn::counters().sceneSpriteDrawsSkipped;
@@ -363,9 +386,15 @@ struct BatchNodeTelemetry : Modify<BatchNodeTelemetry, CCSpriteBatchNode> {
         if (cfg.enabled && cfg.rendererOptimized) {
             ++reborn::counters().batchDraws;
             if (m_pobTextureAtlas) {
-                reborn::counters().batchQuads.fetch_add(
-                    m_pobTextureAtlas->getTotalQuads(), std::memory_order_relaxed
-                );
+                unsigned int const quads = m_pobTextureAtlas->getTotalQuads();
+                reborn::counters().batchQuads.fetch_add(quads, std::memory_order_relaxed);
+                // Empty batches are common while effects expire. The original draw would bind
+                // the program and texture and then submit zero quads; skipping that changes
+                // no pixels and no state anyone reads afterwards (draw(), not visit()).
+                if (quads == 0) {
+                    ++reborn::counters().emptyBatchDrawsSkipped;
+                    return;
+                }
             }
         }
         CCSpriteBatchNode::draw();
@@ -392,7 +421,16 @@ struct ParticleDrawFastPath : Modify<ParticleDrawFastPath, CCParticleSystemQuad>
                 ++reborn::counters().idleParticleDrawsSkipped;
                 return;
             }
-            if (cfg.cullOffscreenParticles && cfg.particleCull != reborn::CullMode::Off && m_uParticleCount > 0) {
+            if (m_uParticleCount > 0 && reborn::inEditor()) {
+                if (cfg.editorCulling && cfg.editorCull != reborn::CullMode::Off) {
+                    ++reborn::counters().editorParticlesExamined;
+                    if (particleOffScreen(this, cfg.editorCullMargin)) {
+                        ++reborn::counters().editorParticleDrawsSkipped;
+                        return;
+                    }
+                }
+            }
+            else if (cfg.cullOffscreenParticles && cfg.particleCull != reborn::CullMode::Off && m_uParticleCount > 0) {
                 ++reborn::counters().particleSystemsExamined;
                 if (particleOffScreen(this, cfg.particleCullMargin)) {
                     ++reborn::counters().offscreenParticleDrawsSkipped;

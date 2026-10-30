@@ -5,9 +5,9 @@
 	},
 	"id": "ziyyhhk.minimum-reborn",
 	"name": "Minimum Reborn",
-	"version": "v1.2.1",
+	"version": "v1.3.0",
 	"developer": "ziyyhhk",
-	"description": "A rendering-focused rebuild of Minimum. Engine or Optimized renderer mode, zero-pixel sprite and particle fast-outs, particle pool caps, optional visibility culling, and an optional render gate that keeps the scheduler running. Physics, input timing and the FPS cap are never changed. Windows build for Geometry Dash 2.2081.",
+	"description": "A rendering-focused rebuild of Minimum with a native in-game control panel. Engine or Optimized renderer mode, zero-pixel and off-screen draw fast-outs, particle pool caps, an editor-only culling policy, and a No Additional Input Delay ordering mode that moves all mod bookkeeping behind the game's update. Physics, input handling and the game's FPS cap are never changed. Windows build for Geometry Dash 2.2081.",
 	"tags": [
 		"performance",
 		"utility"
@@ -22,7 +22,7 @@
 		},
 		"profile": {
 			"name": "Profile",
-			"description": "Balanced is the default: optimized renderer, particle culling, scene culling off because GD batches level objects. Default keeps the engine renderer and full particle effects, Performance and Extreme lower the particle cap further and turn scene culling on. Selecting a profile writes its values into the settings once; editing any setting afterwards switches to Custom. Nothing here changes physics, input timing or the game's FPS cap.",
+			"description": "Balanced is the default: optimized renderer, particle culling, scene culling off because GD batches level objects, editor culling on. Default keeps the engine renderer and full particle effects. Performance and Extreme lower the particle cap and enable gameplay scene culling. Editing a profile-owned setting switches to Custom. Nothing here changes physics, input handling or the game's FPS cap.",
 			"type": "string",
 			"default": "Balanced",
 			"one-of": [
@@ -53,7 +53,7 @@
 		},
 		"renderer-mode": {
 			"name": "Renderer Mode",
-			"description": "Engine: every draw call goes through the unmodified game renderer; the mod only measures. Optimized: the mod's draw hooks run - zero-pixel sprites are not submitted and particle systems follow their own idle/off-screen settings. Draw order, blending, glow, clipping and shaders are never changed. This is not a replacement rendering backend.",
+			"description": "Engine: every draw call goes through the unmodified game renderer; the mod only measures. Optimized: the mod's draw hooks run - zero-pixel sprites, empty batch nodes and eligible off-screen particles are not submitted. Draw order, blending, glow, clipping, shaders and transforms are never changed. This is not a replacement rendering backend.",
 			"type": "string",
 			"default": "Optimized",
 			"one-of": [
@@ -93,7 +93,7 @@
 		},
 		"scene-cull": {
 			"name": "Scene Object Culling",
-			"description": "Skips the draw call of sprites whose whole quad is outside the viewport plus a margin (160 units conservative, 16 aggressive). Any doubt answers draw, and node updates, triggers, collisions and children are untouched. Off by default: phase-3 telemetry showed GD draws its level objects through CCSpriteBatchNode, so this per-sprite path examined 18,939 sprites and skipped 0 in Stereo Madness. It is opt-in for unbatched sprites (UI, effects, modded scenes), not a level-object culler.",
+			"description": "Gameplay-only scene culling for unbatched sprites. Skips a draw when the sprite's whole quad is outside the viewport plus a margin (160 conservative, 16 aggressive). Off by default because GD batches level objects. The Level Editor has its own separate policy under Editor Culling.",
 			"type": "string",
 			"default": "Off",
 			"one-of": [
@@ -131,6 +131,38 @@
 			"type": "bool",
 			"default": false,
 			"enable-if": "cap-particles"
+		},
+		"title-input": {
+			"type": "title",
+			"name": "Input"
+		},
+		"no-input-delay": {
+			"name": "No Additional Input Delay",
+			"description": "Moves every piece of Minimum Reborn bookkeeping out of the pre-update part of the frame: the scheduler counter runs after the game's update, and statistics, benchmark sampling and the Win32 focus probe run after the scene is drawn. The mod then executes no instrumentation before the game processes input and simulation. Ordering change only: it does not modify game input code, physics or the FPS cap, and no hardware latency measurement is claimed.",
+			"type": "bool",
+			"default": true
+		},
+		"title-editor": {
+			"type": "title",
+			"name": "Level Editor"
+		},
+		"editor-culling": {
+			"name": "Editor Culling",
+			"description": "Draw-only visibility and particle culling while the editor is open. Object data, selection, dragging, undo, copy/paste, triggers and saving are never touched. GD batches level objects, so only unbatched editor sprites and particle systems can actually be skipped; the panel shows the real counters.",
+			"type": "bool",
+			"default": true
+		},
+		"editor-cull-mode": {
+			"name": "Editor Culling Mode",
+			"description": "Conservative keeps 160 world units around the viewport; Aggressive keeps 16. Both are draw-only. The editor has its own policy and does not inherit the gameplay scene-cull setting.",
+			"type": "string",
+			"default": "Conservative",
+			"one-of": [
+				"Off",
+				"Conservative",
+				"Aggressive"
+			],
+			"enable-if": "editor-culling"
 		},
 		"title-pacing": {
 			"type": "title",

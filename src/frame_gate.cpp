@@ -71,6 +71,7 @@ namespace {
         std::uint64_t seenSceneCulled = 0;
         std::uint64_t seenSceneExamined = 0;
         std::uint64_t seenParticleExamined = 0;
+        std::uint64_t seenEditorCulled = 0;
     };
 
     GateState& state() {
@@ -128,6 +129,12 @@ namespace {
         counters.particleExaminedPerSec.store(static_cast<std::uint32_t>(
             static_cast<double>(particleExamined - s.seenParticleExamined) / span + 0.5
         ));
+        auto const editorCulled = counters.editorSpriteDrawsSkipped.load(std::memory_order_relaxed)
+                                + counters.editorParticleDrawsSkipped.load(std::memory_order_relaxed);
+        counters.editorCulledPerSec.store(static_cast<std::uint32_t>(
+            static_cast<double>(editorCulled - s.seenEditorCulled) / span + 0.5
+        ));
+        s.seenEditorCulled = editorCulled;
         s.seenSpriteSkips = spriteSkips;
         s.seenParticleSkips = idleSkips + offscreenSkips;
         s.seenCapped = capped;
@@ -169,8 +176,19 @@ namespace {
 
 struct RebornSchedulerTick : Modify<RebornSchedulerTick, CCScheduler> {
     void update(float dt) {
-        ++reborn::counters().schedulerUpdates;
-        CCScheduler::update(dt);
+        // No Additional Input Delay: when enabled, the mod does not even increment a
+        // counter before the game's scheduler runs. The counter is updated after the
+        // original call, so the scheduler (which drives level updates and timers) enters
+        // exactly the code path it would have without this hook. This is an ordering
+        // guarantee, not a claim about hardware latency.
+        if (reborn::config().noInputDelay) {
+            CCScheduler::update(dt);
+            ++reborn::counters().schedulerUpdates;
+        }
+        else {
+            ++reborn::counters().schedulerUpdates;
+            CCScheduler::update(dt);
+        }
     }
 };
 
@@ -193,7 +211,11 @@ struct RebornFrameGate : Modify<RebornFrameGate, CCDirector> {
         auto const& cfg = reborn::config();
 
         auto const totalFrames = this->getTotalFrames();
-        bool const focused = reborn::processHasForeground(now);
+        // With No Additional Input Delay on, the pre-update path uses the cached focus
+        // answer and the Win32 probe runs after the scene has been drawn. The cache is at
+        // most one frame old and is still refreshed at the same 250 ms cadence.
+        bool const focused = cfg.noInputDelay ? reborn::cachedForeground()
+                                              : reborn::processHasForeground(now);
         bool const resumed = rawDelta > 1.0;
 
         if (resumed) {
@@ -208,7 +230,7 @@ struct RebornFrameGate : Modify<RebornFrameGate, CCDirector> {
         bool const measurable = totalFrames >= kSettleFrames && focused && !resumed;
 
         ++s.windowAll;
-        closeWindow(now, measurable);
+        if (!cfg.noInputDelay) closeWindow(now, measurable);
 
         // The gate is decided per frame. interval 0 means "draw every frame".
         double interval = 0.0;
@@ -235,6 +257,12 @@ struct RebornFrameGate : Modify<RebornFrameGate, CCDirector> {
                     this->getScheduler()->update(this->getDeltaTime());
                 }
                 ++counters.framesLogicOnly;
+                if (cfg.noInputDelay) {
+                    // Aggregation and the foreground probe happen after the game's update.
+                    reborn::processHasForeground(Clock::now());
+                    closeWindow(Clock::now(), measurable);
+                    ++counters.deferredBookkeeping;
+                }
                 return;
             }
             s.accum -= interval;
@@ -266,6 +294,15 @@ struct RebornFrameGate : Modify<RebornFrameGate, CCDirector> {
             }
         }
         s.lastDrawn = drawStart;
+
+        if (cfg.noInputDelay) {
+            // Statistics, benchmark aggregation and the Win32 focus probe are all moved
+            // behind the game's scene draw. Nothing in this mod then runs before input
+            // processing or the scheduler update in a frame.
+            reborn::processHasForeground(drawEnd);
+            closeWindow(drawEnd, measurable);
+            ++counters.deferredBookkeeping;
+        }
 
         reborn::ensureHud(totalFrames);
     }

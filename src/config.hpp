@@ -49,6 +49,19 @@ namespace reborn {
         unsigned int particleCap = 128;
         unsigned int spawnBudget = 0;    // particle systems per frame that get a full pool; 0 = off
 
+        // Editor-only culling. Applies the same draw-only visibility tests while the level
+        // editor is open, independently of the gameplay scene/particle settings. Object data,
+        // selection, serialization and editing callbacks are never touched.
+        bool editorCulling = true;
+        CullMode editorCull = CullMode::Conservative;
+        double editorCullMargin = 160.0;
+
+        // No Additional Input Delay: moves every piece of mod bookkeeping out of the part of
+        // the frame that runs before the game's scheduler update and scene draw. The mod then
+        // executes no instrumentation, statistics or Win32 probe before the game processes
+        // input and simulation. It does not change the game's input code, timing or FPS cap.
+        bool noInputDelay = true;
+
         // Render gate. Off by default. Draws at a fixed rate while the scheduler keeps
         // running at the game's normal rate (or 20 fps while the window is unfocused).
         bool renderGate = false;
@@ -93,6 +106,15 @@ namespace reborn {
         // counts show how much of the scene actually reaches the per-sprite hook.
         std::atomic<std::uint64_t> batchDraws{0};
         std::atomic<std::uint64_t> batchQuads{0};
+        std::atomic<std::uint64_t> emptyBatchDrawsSkipped{0};
+
+        // Editor-only culling. Kept apart from the gameplay counters so a claim about editor
+        // behavior can be checked on its own.
+        std::atomic<std::uint64_t> editorSpritesExamined{0};
+        std::atomic<std::uint64_t> editorSpriteDrawsSkipped{0};
+        std::atomic<std::uint64_t> editorParticlesExamined{0};
+        std::atomic<std::uint64_t> editorParticleDrawsSkipped{0};
+        std::atomic<std::uint64_t> deferredBookkeeping{0};
 
         std::atomic<std::uint32_t> fps{0};        // drawn frames per second, wall clock
         std::atomic<std::uint32_t> logicFps{0};   // scheduler updates per second
@@ -107,6 +129,7 @@ namespace reborn {
         std::atomic<std::uint32_t> sceneCulledPerSec{0};
         std::atomic<std::uint32_t> sceneExaminedPerSec{0};
         std::atomic<std::uint32_t> particleExaminedPerSec{0};
+        std::atomic<std::uint32_t> editorCulledPerSec{0};
         std::atomic<std::uint32_t> capStep{0};   // 0 = configured cap, >0 = adaptive cap in effect
     };
 
@@ -128,6 +151,10 @@ namespace reborn {
     // Windows only: true unless the game window is positively known to be in the background.
     // Polls at most every 250 ms; needs two unfocused polls in a row.
     bool processHasForeground(std::chrono::steady_clock::time_point now);
+
+    // Last focus answer without performing a Win32 probe. Used when the input-delay setting
+    // defers the probe to after the scene has been drawn.
+    bool cachedForeground();
 
     // Adaptive particle cap (opt-in). Called about twice a second with the average frame time
     // of drawn frames. Lowers the cap in steps while frames stay slow, relaxes back towards

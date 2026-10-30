@@ -16,6 +16,9 @@ namespace reborn {
     // id for the transform cache and starts this frame's particle spawn budget.
     void renderFrameBegin();
 
+    // True when the current frame belongs to the level editor scene. Set once per frame.
+    bool inEditor();
+
     // Particle pool size that is applied right now (the configured cap).
     unsigned int effectiveParticleCap();
 
