@@ -250,7 +250,13 @@ namespace {
         auto* rect = CCSprite::create(kRectSprite);
         if (!rect) return nullptr;
         rect->setAnchorPoint({0.5f, 0.5f});
-        rect->setContentSize({width, height});
+        // Scale rather than setContentSize: the sprite is a solid untrimmed square, so a
+        // scale factor is exact, while contentSize on a sprite goes through the frame's
+        // offset handling (which is what stretched the GD square into a sliver).
+        CCSize const natural = rect->getContentSize();
+        if (natural.width > 0.f && natural.height > 0.f) {
+            rect->setScale(width / natural.width, height / natural.height);
+        }
         rect->setColor(color);
         rect->setOpacity(opacity);
         return rect;
