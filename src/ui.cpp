@@ -181,11 +181,14 @@ namespace {
     // ---------------------------------------------------------------------------------
     // Shared visual helpers
     // ---------------------------------------------------------------------------------
-    constexpr float kPopupWidth = 500.f;
-    constexpr float kPopupHeight = 320.f;
-    constexpr float kPageWidth = 480.f;
-    constexpr float kPageHeight = 208.f;
-    constexpr float kButtonHeight = 23.f;
+    // The popup is deliberately smaller than the 320-unit design height so it reads as a
+    // window over the paused game instead of a full-screen dashboard. 470x284 design units
+    // leave roughly a 100x37 pixel margin at 1176x664.
+    constexpr float kPopupWidth = 470.f;
+    constexpr float kPopupHeight = 284.f;
+    constexpr float kPageWidth = 446.f;
+    constexpr float kPageHeight = 168.f;
+    constexpr float kButtonHeight = 22.f;
 
     void fitLabel(CCLabelBMFont* label, float maxScale, float room) {
         float const natural = label->getContentSize().width;
@@ -207,31 +210,32 @@ namespace {
         return label;
     }
 
-    // The small bespoke nine-slice files are used when the loader has made them available.
-    // GD's own square02b_001.png is the guaranteed fallback: it ships with the game, is a
-    // real rounded nine-slice and tints correctly, so a missing resource can never leave a
-    // control without a visible hit area.
+    // Native GD nine-slice. Custom PNGs are automatically downsized by the Geode packer
+    // (a 96px card becomes a 24px base sprite), which makes hard-coded source rects and
+    // cap insets unreliable. square02b_001.png is 80x80 in every GD install and is what
+    // GD itself uses for menu buttons, so it always renders as a rounded control.
+    CCScale9Sprite* makeNineSlice(float width, float height, float inset, bool selected) {
+        auto* bg = CCScale9Sprite::create(
+            "square02b_001.png", {0.f, 0.f, 80.f, 80.f}, {inset, inset, inset, inset}
+        );
+        if (!bg) return nullptr;
+        bg->setAnchorPoint({0.5f, 0.5f});
+        bg->setContentSize({width, height});
+        bg->setColor(selected ? ccc3(88, 132, 245) : ccc3(52, 60, 82));
+        bg->setOpacity(selected ? 255 : 225);
+        return bg;
+    }
+
     CCScale9Sprite* makeCard(float width, float height) {
-        auto* card = CCScale9Sprite::create("reborn-card.png"_spr, {0.f, 0.f, 96.f, 96.f}, {24.f, 24.f, 24.f, 24.f});
-        if (!card) card = CCScale9Sprite::create("square02b_001.png", {0.f, 0.f, 80.f, 80.f});
+        auto* card = makeNineSlice(width, height, 12.f, false);
         if (!card) return nullptr;
-        card->setContentSize({width, height});
-        card->setColor(ccc3(18, 22, 36));
-        card->setOpacity(190);
+        card->setColor(ccc3(5, 8, 16));
+        card->setOpacity(110);
         return card;
     }
 
     CCScale9Sprite* makeButtonBackground(float width, float height, bool selected) {
-        auto* bg = CCScale9Sprite::create(
-            selected ? "reborn-button-selected.png"_spr : "reborn-button.png"_spr,
-            {0.f, 0.f, 64.f, 64.f}, {7.f, 7.f, 7.f, 7.f}
-        );
-        if (!bg) bg = CCScale9Sprite::create("square02b_001.png", {0.f, 0.f, 80.f, 80.f});
-        if (!bg) return nullptr;
-        bg->setContentSize({width, height});
-        bg->setColor(selected ? ccc3(88, 132, 245) : ccc3(37, 43, 63));
-        bg->setOpacity(selected ? 255 : 225);
-        return bg;
+        return makeNineSlice(width, height, 10.f, selected);
     }
 
     enum class CycleKind {
@@ -294,16 +298,10 @@ namespace {
         };
 
         bool init() {
+            // Keep GD's own popup frame. It is opaque, native to the game and does not
+            // depend on packed custom nine-slices, which the packer downsizes.
             if (!Popup::init(kPopupWidth, kPopupHeight, "square01_001.png")) return false;
             this->setID("minimum-reborn-popup"_spr);
-            if (m_bgSprite) m_bgSprite->setVisible(false);
-
-            if (auto* panel = makeCard(kPopupWidth, kPopupHeight)) {
-                panel->setColor(ccc3(15, 18, 30));
-                panel->setOpacity(248);
-                panel->setPosition({kPopupWidth / 2.f, kPopupHeight / 2.f});
-                m_mainLayer->addChild(panel, -1);
-            }
 
             this->buildHeader();
             this->buildTabs();
@@ -321,26 +319,26 @@ namespace {
             auto* logo = CCSprite::create("logo-128.png"_spr);
             if (logo) {
                 float const h = logo->getContentSize().height;
-                logo->setScale(h > 0.f ? 42.f / h : 1.f);
-                m_mainLayer->addChildAtPosition(logo, Anchor::Center, ccp(-225.f, 137.f));
+                logo->setScale(h > 0.f ? 30.f / h : 1.f);
+                m_mainLayer->addChildAtPosition(logo, Anchor::Center, ccp(-196.f, 118.f));
             }
 
-            if (auto* title = makeLabel("MINIMUM REBORN", "bigFont.fnt", 0.62f)) {
+            if (auto* title = makeLabel("MINIMUM REBORN", "bigFont.fnt", 0.5f)) {
                 title->setAnchorPoint({0.f, 0.5f});
-                m_mainLayer->addChildAtPosition(title, Anchor::Center, ccp(-194.f, 141.f));
+                m_mainLayer->addChildAtPosition(title, Anchor::Center, ccp(-176.f, 121.f));
             }
-            if (auto* sub = makeLabel("draw-only optimization  |  v1.3.1", "chatFont.fnt", 0.42f, 190, true)) {
-                m_mainLayer->addChildAtPosition(sub, Anchor::Center, ccp(-193.f, 127.f));
+            if (auto* sub = makeLabel("draw-only optimization  |  v1.3.2", "chatFont.fnt", 0.35f, 185, true)) {
+                m_mainLayer->addChildAtPosition(sub, Anchor::Center, ccp(-175.f, 109.f));
             }
 
-            if (auto* caption = makeLabel("ACTIVE PROFILE", "chatFont.fnt", 0.34f, 150, true)) {
+            if (auto* caption = makeLabel("ACTIVE PROFILE", "chatFont.fnt", 0.3f, 145, true)) {
                 caption->setAnchorPoint({1.f, 0.5f});
-                m_mainLayer->addChildAtPosition(caption, Anchor::Center, ccp(220.f, 143.f));
+                m_mainLayer->addChildAtPosition(caption, Anchor::Center, ccp(172.f, 122.f));
             }
-            m_headerProfile = makeLabel("Balanced", "goldFont.fnt", 0.46f, 255, true);
+            m_headerProfile = makeLabel("Balanced", "goldFont.fnt", 0.4f, 255, true);
             if (m_headerProfile) {
                 m_headerProfile->setAnchorPoint({1.f, 0.5f});
-                m_mainLayer->addChildAtPosition(m_headerProfile, Anchor::Center, ccp(220.f, 129.f));
+                m_mainLayer->addChildAtPosition(m_headerProfile, Anchor::Center, ccp(172.f, 110.f));
             }
         }
 
@@ -349,29 +347,29 @@ namespace {
             m_tabMenu->setPosition({kPopupWidth / 2.f, kPopupHeight / 2.f});
             m_mainLayer->addChild(m_tabMenu, 10);
 
-            float const width = 74.f;
+            float const width = 68.f;
             float const gap = 3.f;
             float const total = 6.f * width + 5.f * gap;
             float x = -total / 2.f + width / 2.f;
 
             for (int i = 0; i < static_cast<int>(PageCount); ++i) {
                 auto* holder = CCNode::create();
-                holder->setContentSize({width, 24.f});
-                auto* bg = makeButtonBackground(width, 24.f, i == static_cast<int>(m_page));
+                holder->setContentSize({width, 22.f});
+                auto* bg = makeButtonBackground(width, 22.f, i == static_cast<int>(m_page));
                 if (bg) {
-                    bg->setPosition({width / 2.f, 12.f});
+                    bg->setPosition({width / 2.f, 11.f});
                     holder->addChild(bg);
                 }
-                auto* label = makeLabel(kPageNames[i], "bigFont.fnt", 0.39f);
+                auto* label = makeLabel(kPageNames[i], "bigFont.fnt", 0.34f);
                 if (label) {
-                    fitLabel(label, 0.39f, width - 8.f);
-                    label->setPosition({width / 2.f, 12.f});
+                    fitLabel(label, 0.34f, width - 8.f);
+                    label->setPosition({width / 2.f, 11.f});
                     holder->addChild(label);
                 }
                 auto* item = CCMenuItemSpriteExtra::create(holder, this, menu_selector(RebornPopup::onTab));
                 item->setTag(i);
                 m_tabMenu->addChild(item);
-                item->setPosition({x + static_cast<float>(i) * (width + gap), 100.f});
+                item->setPosition({x + static_cast<float>(i) * (width + gap), 90.f});
                 m_tabBackgrounds.push_back(bg);
                 m_tabLabels.push_back(label);
             }
@@ -390,19 +388,19 @@ namespace {
         void footerButton(char const* text, float x, SEL_MenuHandler selector) {
             float const width = text[0] == 'A' ? 120.f : (text[0] == 'R' ? 92.f : 92.f);
             auto* holder = CCNode::create();
-            holder->setContentSize({width, 26.f});
-            if (auto* bg = makeButtonBackground(width, 26.f, false)) {
-                bg->setPosition({width / 2.f, 13.f});
+            holder->setContentSize({width, 22.f});
+            if (auto* bg = makeButtonBackground(width, 22.f, false)) {
+                bg->setPosition({width / 2.f, 11.f});
                 holder->addChild(bg);
             }
-            if (auto* label = makeLabel(text, "bigFont.fnt", 0.42f)) {
-                fitLabel(label, 0.42f, width - 10.f);
-                label->setPosition({width / 2.f, 13.f});
+            if (auto* label = makeLabel(text, "bigFont.fnt", 0.4f)) {
+                fitLabel(label, 0.4f, width - 10.f);
+                label->setPosition({width / 2.f, 11.f});
                 holder->addChild(label);
             }
             auto* item = CCMenuItemSpriteExtra::create(holder, this, selector);
             m_footerMenu->addChild(item);
-            item->setPosition({x, -140.f});
+            item->setPosition({x, -118.f});
         }
 
         void onTab(CCObject* sender) {
@@ -447,7 +445,7 @@ namespace {
             m_pageRoot = CCNode::create();
             m_pageRoot->setContentSize({kPageWidth, kPageHeight});
             m_pageRoot->setAnchorPoint({0.5f, 0.5f});
-            m_mainLayer->addChildAtPosition(m_pageRoot, Anchor::Center, ccp(0.f, -20.f));
+            m_mainLayer->addChildAtPosition(m_pageRoot, Anchor::Center, ccp(0.f, -13.f));
 
             if (auto* card = makeCard(kPageWidth, kPageHeight)) {
                 card->setPosition({kPageWidth / 2.f, kPageHeight / 2.f});
@@ -540,161 +538,148 @@ namespace {
         }
 
         void buildOverview() {
-            m_liveLabel = textAt("--", 0.f, 76.f, 0.5f, "chatFont.fnt");
+            m_liveLabel = textAt("--", 0.f, 54.f, 0.42f, "chatFont.fnt");
             if (m_liveLabel) m_liveLabel->setAlignment(kCCTextAlignmentCenter);
 
-            if (auto* caption = textAt("PROFILE", 0.f, 38.f, 0.34f, "chatFont.fnt", 150)) {
+            if (auto* caption = textAt("PROFILE", 0.f, 24.f, 0.3f, "chatFont.fnt", 150)) {
                 caption->setAlignment(kCCTextAlignmentCenter);
             }
 
-            float const width = 86.f;
-            float const gap = 6.f;
+            float const width = 80.f;
+            float const gap = 5.f;
             float const total = 5.f * width + 4.f * gap;
             float x = -total / 2.f + width / 2.f;
             for (int i = 0; i < 5; ++i) {
                 std::string name = kProfileNames[i];
                 auto ref = this->buttonAt(
-                    x + static_cast<float>(i) * (width + gap), 15.f, width, 21.f, name,
+                    x + static_cast<float>(i) * (width + gap), 5.f, width, 20.f, name,
                     [this, name]() {
                         Mod::get()->setSettingValue<std::string>("profile", name);
                         reborn::refreshConfig();
                         this->refreshPage();
-                    }, false, 0.35f
+                    }, false, 0.33f
                 );
                 m_chips.push_back({ref.background, ref.label, name});
             }
 
-            this->toggleAt(-132.f, -22.f, "enabled", "Mod enabled");
-            this->toggleAt(52.f, -22.f, "show-overlay", "Performance overlay");
+            this->toggleAt(-148.f, -24.f, "enabled", "Mod enabled");
+            this->toggleAt(46.f, -24.f, "show-overlay", "Performance overlay");
 
-            auto bench = this->buttonAt(-62.f, -80.f, 104.f, kButtonHeight, "Benchmark",
-                [this]() { this->toggleBenchmark(); }, false, 0.38f);
+            auto bench = this->buttonAt(-76.f, -58.f, 100.f, 21.f, "Benchmark",
+                [this]() { this->toggleBenchmark(); }, false, 0.36f);
             m_benchLabel = bench.label;
-            this->buttonAt(58.f, -80.f, 104.f, kButtonHeight, "Geode Settings",
-                [this]() { this->onAllSettings(nullptr); }, false, 0.36f);
+            this->buttonAt(54.f, -58.f, 112.f, 21.f, "Geode Settings",
+                [this]() { this->onAllSettings(nullptr); }, false, 0.34f);
 
             textAt(
                 "Physics, collision, input timing and the game's FPS cap are never changed.",
-                0.f, -102.f, 0.38f, "chatFont.fnt", 165
+                0.f, -76.f, 0.3f, "chatFont.fnt", 160
             );
         }
 
         void buildRender() {
-            this->cycleAt(-100.f, 84.f, 220.f, "Renderer", CycleKind::Renderer, "renderer-mode",
+            this->cycleAt(-20.f, 60.f, 250.f, "Renderer", CycleKind::Renderer, "renderer-mode",
                 this->makeCycleAction(CycleKind::Renderer, "renderer-mode"));
 
-            this->toggleAt(-158.f, 52.f, "sprite-fast-path", "Sprite draw fast-out");
-            this->toggleAt(-158.f, 24.f, "skip-idle-particles", "Skip idle particle draws");
-            this->toggleAt(-158.f, -4.f, "cap-particles", "Cap particle pool size");
-            this->toggleAt(-158.f, -32.f, "adaptive-cap", "Adaptive particle cap (experimental)");
+            this->toggleAt(-160.f, 34.f, "sprite-fast-path", "Sprite draw fast-out");
+            this->toggleAt(-160.f, 10.f, "skip-idle-particles", "Skip idle particle draws");
+            this->toggleAt(-160.f, -14.f, "cap-particles", "Cap particle pool size");
+            this->toggleAt(-160.f, -38.f, "adaptive-cap", "Adaptive cap (experimental)");
 
-            this->cycleAt(-100.f, -58.f, 180.f, "Particle cap", CycleKind::ParticleCap, "particle-cap",
+            this->cycleAt(-76.f, -64.f, 170.f, "Particle cap", CycleKind::ParticleCap, "particle-cap",
                 this->makeCycleAction(CycleKind::ParticleCap, "particle-cap"));
-
 #ifdef GEODE_IS_WINDOWS
-            this->toggleAt(-158.f, -86.f, "render-gate", "Render gate (experimental)");
+            this->toggleAt(102.f, -64.f, "render-gate", "Render gate");
 #endif
             textAt(
-                "Draw-only. Order, blending, glow, clipping, shaders and transforms are untouched.",
-                0.f, -104.f, 0.37f, "chatFont.fnt", 165
+                "Draw-only: order, blending, glow, clipping and shaders are untouched.",
+                0.f, -79.f, 0.28f, "chatFont.fnt", 155
             );
         }
 
         void buildCulling() {
-            this->cycleAt(-94.f, 82.f, 240.f, "Particles", CycleKind::Cull, "particle-cull-mode",
+            this->cycleAt(-20.f, 58.f, 280.f, "Particles", CycleKind::Cull, "particle-cull-mode",
                 this->makeCycleAction(CycleKind::Cull, "particle-cull-mode"));
-            this->cycleAt(-94.f, 52.f, 240.f, "Scene sprites", CycleKind::Cull, "scene-cull",
+            this->cycleAt(-20.f, 30.f, 280.f, "Scene sprites", CycleKind::Cull, "scene-cull",
                 this->makeCycleAction(CycleKind::Cull, "scene-cull"));
 
-            m_liveLabel = textAt("--", 0.f, 10.f, 0.43f, "chatFont.fnt");
+            m_liveLabel = textAt("--", 0.f, -6.f, 0.4f, "chatFont.fnt");
             if (m_liveLabel) m_liveLabel->setAlignment(kCCTextAlignmentCenter);
 
             textAt(
-                "Particle systems keep updating and emitting even when their draw is skipped.\n"
-                "Scene culling only decides whether an unbatched sprite is submitted; nodes,\n"
-                "triggers, collisions and children are untouched.",
-                -234.f, -46.f, 0.38f, "chatFont.fnt", 185, true
+                "Particle systems keep updating and emitting when their draw is skipped.\n"
+                "Scene culling only decides whether an unbatched sprite is submitted;\n"
+                "nodes, triggers, collisions and children are untouched.",
+                -216.f, -46.f, 0.33f, "chatFont.fnt", 185, true
             );
             textAt(
-                "GD batches level objects, so scene culling mostly affects UI and effect sprites.",
-                -234.f, -94.f, 0.37f, "chatFont.fnt", 150, true
+                "GD batches level objects, so in-level culling mostly covers UI and effect sprites.",
+                0.f, -78.f, 0.28f, "chatFont.fnt", 150
             );
         }
 
         void buildInput() {
-            this->toggleAt(-158.f, 84.f, "no-input-delay", "No Additional Input Delay");
+            this->toggleAt(-160.f, 64.f, "no-input-delay", "No Additional Input Delay");
 
             textAt(
-                "Moves all mod bookkeeping out of the pre-update part of the frame: the\n"
-                "scheduler counter runs after the game's update, and statistics, benchmark\n"
-                "sampling and the Win32 focus probe run after the scene is drawn. The mod\n"
-                "then adds no work before the game processes input or simulation.",
-                -234.f, 49.f, 0.38f, "chatFont.fnt", 195, true
+                "Moves mod bookkeeping out of the pre-update part of the frame: the scheduler\n"
+                "count runs after the game update, and stats, benchmark sampling and the Win32\n"
+                "focus probe run after the scene is drawn. No work is added before input.",
+                -216.f, 30.f, 0.32f, "chatFont.fnt", 195, true
             );
 
 #ifdef GEODE_IS_WINDOWS
-            this->toggleAt(-158.f, -2.f, "timer-resolution", "1 ms timer resolution");
-            this->toggleAt(-158.f, -28.f, "background-throttle", "Throttle drawing in background");
-            this->cycleAt(-100.f, -56.f, 190.f, "Priority", CycleKind::Priority, "process-priority",
+            this->toggleAt(-160.f, -12.f, "timer-resolution", "1 ms timer resolution");
+            this->toggleAt(-160.f, -36.f, "background-throttle", "Throttle drawing in background");
+            this->cycleAt(-36.f, -58.f, 210.f, "Priority", CycleKind::Priority, "process-priority",
                 this->makeCycleAction(CycleKind::Priority, "process-priority"));
 #else
-            textAt("Windows-only timing options are hidden on this platform.", -234.f, -6.f,
-                0.38f, "chatFont.fnt", 160, true);
+            textAt("Windows-only timing options are hidden on this platform.", -216.f, -20.f,
+                0.34f, "chatFont.fnt", 160, true);
 #endif
 
-            m_liveLabel = textAt("--", 0.f, -84.f, 0.4f, "chatFont.fnt");
+            m_liveLabel = textAt("--", 0.f, -78.f, 0.28f, "chatFont.fnt");
             if (m_liveLabel) m_liveLabel->setAlignment(kCCTextAlignmentCenter);
-
-            textAt(
-                "Ordering change only. Game input handling, physics, timers and the FPS cap are untouched.",
-                0.f, -104.f, 0.36f, "chatFont.fnt", 150
-            );
         }
 
         void buildEditor() {
-            this->toggleAt(-158.f, 86.f, "editor-culling", "Editor visibility and particle culling");
-            this->cycleAt(-94.f, 56.f, 240.f, "Editor mode", CycleKind::EditorCull, "editor-cull-mode",
+            this->toggleAt(-160.f, 64.f, "editor-culling", "Editor visibility and particle culling");
+            this->cycleAt(-30.f, 36.f, 250.f, "Editor mode", CycleKind::EditorCull, "editor-cull-mode",
                 this->makeCycleAction(CycleKind::EditorCull, "editor-cull-mode"));
 
-            m_liveLabel = textAt("--", 0.f, 18.f, 0.41f, "chatFont.fnt");
+            m_liveLabel = textAt("--", 0.f, 0.f, 0.36f, "chatFont.fnt");
             if (m_liveLabel) m_liveLabel->setAlignment(kCCTextAlignmentCenter);
 
             textAt(
-                "Applies the same draw-only tests while the editor is open. Object data,\n"
-                "selection, dragging, undo, copy/paste, triggers and saving are never touched.\n"
-                "Level objects are batched by GD, so only unbatched editor sprites and\n"
-                "particle systems can actually be skipped. The counters show the real result.",
-                -234.f, -24.f, 0.38f, "chatFont.fnt", 190, true
+                "Applies the same draw-only tests while the editor is open. Object data, selection,\n"
+                "dragging, undo, copy/paste, triggers and saving are never touched. GD batches level\n"
+                "objects, so only unbatched sprites and particle systems can actually be skipped.",
+                -216.f, -44.f, 0.32f, "chatFont.fnt", 190, true
             );
 
             textAt(
                 "Open the editor to populate these counters. Nothing is removed from the level.",
-                0.f, -102.f, 0.36f, "chatFont.fnt", 150
+                0.f, -78.f, 0.28f, "chatFont.fnt", 150
             );
         }
 
         void buildDiagnostics() {
-            this->toggleAt(-158.f, 88.f, "show-overlay", "Performance overlay");
-            this->cycleAt(-94.f, 60.f, 220.f, "Detail", CycleKind::Detail, "overlay-detail",
+            this->toggleAt(-160.f, 62.f, "show-overlay", "Performance overlay");
+            this->cycleAt(-36.f, 34.f, 240.f, "Detail", CycleKind::Detail, "overlay-detail",
                 this->makeCycleAction(CycleKind::Detail, "overlay-detail"));
-            this->cycleAt(-94.f, 32.f, 220.f, "Corner", CycleKind::Corner, "overlay-corner",
+            this->cycleAt(-36.f, 8.f, 240.f, "Corner", CycleKind::Corner, "overlay-corner",
                 this->makeCycleAction(CycleKind::Corner, "overlay-corner"));
 
-            auto bench = this->buttonAt(-100.f, -4.f, 180.f, kButtonHeight, "Benchmark",
-                [this]() { this->toggleBenchmark(); }, false, 0.38f);
+            auto bench = this->buttonAt(-70.f, -20.f, 160.f, 21.f, "Benchmark",
+                [this]() { this->toggleBenchmark(); }, false, 0.36f);
             m_benchLabel = bench.label;
 
-            m_liveLabel = textAt("--", 0.f, -42.f, 0.4f, "chatFont.fnt");
+            m_liveLabel = textAt("--", 0.f, -50.f, 0.32f, "chatFont.fnt");
             if (m_liveLabel) m_liveLabel->setAlignment(kCCTextAlignmentCenter);
 
             textAt(
-                "draw ms is CPU time inside the drawScene call, not GPU time. Batch counts\n"
-                "come from GD's CCSpriteBatchNode path. No GPU timer is claimed.",
-                -234.f, -78.f, 0.37f, "chatFont.fnt", 180, true
-            );
-            textAt(
-                "Benchmark: start here, close the panel, then resume the level. Pause screens are excluded.",
-                0.f, -104.f, 0.35f, "chatFont.fnt", 150
+                "draw ms is CPU time inside drawScene, not GPU time. No GPU timer is claimed.",
+                0.f, -78.f, 0.28f, "chatFont.fnt", 160
             );
         }
 
@@ -922,11 +907,10 @@ namespace {
             else if (m_page == Input) {
                 std::snprintf(
                     text, sizeof(text),
-                    "frame-end bookkeeping: %llu frames   |   scheduler %llu\n"
-                    "order: %s",
+                    "frame-end bookkeeping %llu frames   |   scheduler %llu   |   order: %s",
                     static_cast<unsigned long long>(counters.deferredBookkeeping.load(std::memory_order_relaxed)),
                     static_cast<unsigned long long>(counters.schedulerUpdates.load(std::memory_order_relaxed)),
-                    cfg.noInputDelay ? "game update first, mod work last" : "mod counters before the game update"
+                    cfg.noInputDelay ? "game update first" : "counters first"
                 );
             }
             else if (m_page == Diagnostics) {
@@ -999,18 +983,18 @@ class $modify(RebornPauseLayer, PauseLayer) {
         holder->setContentSize({width, width});
 
         auto* bg = CCScale9Sprite::create(
-            "reborn-button.png"_spr, {0.f, 0.f, 64.f, 64.f}, {8.f, 8.f, 8.f, 8.f}
+            "square02b_001.png", {0.f, 0.f, 80.f, 80.f}, {12.f, 12.f, 12.f, 12.f}
         );
-        if (!bg) bg = CCScale9Sprite::create("square02b_001.png", {0.f, 0.f, 80.f, 80.f});
         if (bg) {
+            bg->setAnchorPoint({0.5f, 0.5f});
             bg->setContentSize({width, width});
-            bg->setColor(ccc3(37, 43, 63));
+            bg->setColor(ccc3(46, 54, 76));
             bg->setOpacity(235);
             bg->setPosition({width / 2.f, width / 2.f});
             holder->addChild(bg);
         }
 
-        if (auto* icon = CCSprite::create("logo-128.png"_spr)) {
+        if (auto* icon = CCSprite::create("icon-button.png"_spr)) {
             float const h = icon->getContentSize().height;
             icon->setScale(h > 0.f ? 34.f / h : 1.f);
             icon->setPosition({width / 2.f, width / 2.f});
