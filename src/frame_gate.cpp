@@ -288,11 +288,20 @@ struct RebornFrameGate : Modify<RebornFrameGate, CCDirector> {
 #ifdef GEODE_IS_WINDOWS
         // Low latency: let the GPU catch up before the next frame starts, so the driver
         // cannot queue several frames ahead of the display and a click is not stuck behind
-        // them. Deliberately placed after drawEnd, so the wait shows up in the measured
-        // frame-to-frame time and not inside the mod's own draw time.
+        // them. Placed after drawEnd, so the wait shows up in the frame-to-frame period and
+        // not inside the mod's own draw time.
         if (cfg.enabled && cfg.lowLatency) {
+            Clock::time_point const drainStart = Clock::now();
             glFinish();
+            Clock::time_point const drainEnd = Clock::now();
             ++counters.lowLatencyDrains;
+            // The wait is real frame cost, but it must not be charged to the *next* frame's
+            // delta: the render gate accumulates wall time between hooks, so leaving the
+            // drain inside it would silently push the effective render rate below the
+            // requested one and make pacing uneven. Advancing the sample point by the drain
+            // duration keeps the gate honest without hiding the cost from frameMs, which is
+            // measured from the previous draw's start.
+            s.last += (drainEnd - drainStart);
         }
 #endif
 

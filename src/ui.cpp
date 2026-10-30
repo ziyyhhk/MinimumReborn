@@ -779,7 +779,11 @@ namespace {
 
         void buildInput() {
             this->toggleRow(0, "no-input-delay", "No Additional Input Delay");
+#ifdef GEODE_IS_WINDOWS
+            // The drain is compiled into the Windows draw path; showing the switch elsewhere
+            // would offer a control that cannot do anything.
             this->toggleRow(1, "low-latency", "Low Latency (drain GPU queue)");
+#endif
             statRow(2, "Frame order", "input");
 
 #ifdef GEODE_IS_WINDOWS
@@ -885,8 +889,10 @@ namespace {
             std::string const& key = m_toggles[static_cast<std::size_t>(index)].key;
             auto* mod = Mod::get();
             bool const next = !mod->getSettingValue<bool>(key);
+            // These four are diagnostics or per-user preferences that no profile owns, so
+            // changing them must not silently rewrite the profile to Custom.
             if (key != "show-overlay" && key != "no-input-delay" && key != "editor-culling"
-                && key != "timer-resolution" && key != "adaptive-cap") {
+                && key != "timer-resolution" && key != "adaptive-cap" && key != "low-latency") {
                 this->markCustom();
             }
             mod->setSettingValue<bool>(key, next);
