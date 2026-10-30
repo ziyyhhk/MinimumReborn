@@ -360,6 +360,12 @@ namespace {
         static constexpr float kFooterY = -kPopupHeight / 2.f + kFooterH / 2.f + 2.f;
         static constexpr float kRowTop = kPopupHeight / 2.f - kHeaderH - kNavH - kRowPitch / 2.f;
 
+        // m_mainLayer covers the whole panel with its origin in the bottom-left corner, so
+        // the centered coordinates the layout produces are shifted here once, in the
+        // placement helpers, rather than at every call site.
+        static constexpr float kCX = kPopupWidth / 2.f;
+        static constexpr float kCY = kPopupHeight / 2.f;
+
         static float rowY(int row) {
             return kRowTop - static_cast<float>(row) * kRowPitch;
         }
@@ -386,7 +392,7 @@ namespace {
                 label->setAnchorPoint({1.f, 0.5f});
                 label->setAlignment(kCCTextAlignmentRight);
             }
-            label->setPosition({x, y});
+            label->setPosition({kCX + x, kCY + y});
             parent->addChild(label);
             return label;
         }
@@ -420,17 +426,18 @@ namespace {
             // Baseline the tabs sit on, plus the accent bar that marks the selected tab.
             if (auto* base = CCLayerColor::create(ccc4(255, 255, 255, 26), kContentWidth, 1)) {
                 base->setAnchorPoint({0.5f, 0.5f});
-                base->setPosition({0.f, kNavCenterY - kNavH / 2.f});
+                base->setPosition({kCX, kNavCenterY - kNavH / 2.f});
                 m_navRoot->addChild(base);
             }
             m_tabAccent = CCLayerColor::create(ccc4(96, 214, 141, 235), kTabWidth - 16.f, 2.f);
             if (m_tabAccent) {
                 m_tabAccent->setAnchorPoint({0.5f, 0.5f});
+                m_tabAccent->setPosition({kCX, kCY});
                 m_navRoot->addChild(m_tabAccent);
             }
 
             m_tabMenu = CCMenu::create();
-            m_tabMenu->setPosition({0.f, 0.f});
+            m_tabMenu->setPosition({kCX, kCY});
             m_navRoot->addChild(m_tabMenu, 2);
 
             for (int i = 0; i < static_cast<int>(PageCount); ++i) {
@@ -453,7 +460,7 @@ namespace {
 
         void buildFooter() {
             m_footerMenu = CCMenu::create();
-            m_footerMenu->setPosition({0.f, 0.f});
+            m_footerMenu->setPosition({kCX, kCY});
             m_mainLayer->addChild(m_footerMenu, 10);
 
             this->footerButton("Reset", kLeft + 48.f, 96.f, menu_selector(RebornPopup::onReset));
@@ -504,8 +511,8 @@ namespace {
                 fitLabel(label, selected ? 0.35f : 0.33f, kTabWidth - 8.f);
             }
             if (m_tabAccent) {
-                m_tabAccent->setPosition({tabCenter(static_cast<int>(m_page)),
-                                          kNavCenterY - kNavH / 2.f + 1.5f});
+                m_tabAccent->setPosition({kCX + tabCenter(static_cast<int>(m_page)),
+                                          kCY + kNavCenterY - kNavH / 2.f + 1.5f});
             }
         }
 
@@ -530,7 +537,7 @@ namespace {
             m_mainLayer->addChild(m_pageRoot, 5);
 
             m_pageMenu = CCMenu::create();
-            m_pageMenu->setPosition({0.f, 0.f});
+            m_pageMenu->setPosition({kCX, kCY});
             m_pageRoot->addChild(m_pageMenu);
 
             switch (m_page) {
@@ -618,7 +625,8 @@ namespace {
             int row, char const* prefix, CycleKind kind, std::string key,
             float width = kContentWidth, float x = 0.f
         ) {
-            auto ref = this->pillAt(x, rowY(row), width, " ", std::function<void()>(), 0.34f);
+            auto ref = this->pillAt(x, rowY(row), width, " ",
+                                    std::function<void()>(), 0.34f);
             m_cycles.push_back({ref.label, kind, std::move(key), prefix, width});
             // pillAt registered the empty action above; this row's action is the cycle step.
             m_actions.back() = this->makeCycleAction(kind, key);
