@@ -59,9 +59,14 @@ namespace reborn {
         // Only features that exist are listed. No profile claims a feature the build lacks.
         // Default takes the game's draw path unchanged, so the original renderer is what you
         // get; the other profiles turn on the optimized draw path with increasing culling.
+        //
+        // Balanced leaves the scene cull off. Runtime telemetry (phase 3) showed that GD draws
+        // level objects through CCSpriteBatchNode, so the per-sprite cull examined ~19k sprites
+        // and skipped none; keeping it on by default would add checks with no measured saving.
+        // It stays available as an opt-in for unbatched content and for the stronger profiles.
         constexpr ProfileValues kProfiles[] = {
             {"Default",     256, 20, false, "Off",          "Off"},
-            {"Balanced",    128, 20, true,  "Conservative", "Conservative"},
+            {"Balanced",    128, 20, true,  "Off",          "Conservative"},
             {"Performance",  64, 15, true,  "Conservative", "Conservative"},
             {"Extreme",      32, 10, true,  "Aggressive",   "Aggressive"},
         };
@@ -299,7 +304,7 @@ namespace reborn {
         mod->setSettingValue<bool>("skip-idle-particles", true);
         mod->setSettingValue<bool>("cull-offscreen-particles", true);
         mod->setSettingValue<std::string>("particle-cull-mode", "Conservative");
-        mod->setSettingValue<std::string>("scene-cull", "Conservative");
+        mod->setSettingValue<std::string>("scene-cull", "Off");
         mod->setSettingValue<bool>("cap-particles", true);
         mod->setSettingValue<int64_t>("particle-cap", static_cast<int64_t>(kDefaultParticleCap));
         mod->setSettingValue<bool>("adaptive-cap", false);

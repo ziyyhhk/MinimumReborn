@@ -258,8 +258,12 @@ struct RebornFrameGate : Modify<RebornFrameGate, CCDirector> {
             double const workMs = std::chrono::duration<double, std::milli>(drawEnd - drawStart).count();
             reborn::frameStats().push(std::min(frameMs, 1000.0), workMs);
             // Feeds the in-game benchmark with the same number the overlay uses. No-op
-            // unless a run is active.
-            reborn::benchmarkNoteFrame(drawEnd, frameMs, workMs);
+            // unless a run is active. Paused frames are excluded: the pause layer still
+            // draws at full rate, and counting it would turn "start the benchmark, resume
+            // the level" into a measurement of a static pause screen.
+            if (!this->isPaused()) {
+                reborn::benchmarkNoteFrame(drawEnd, frameMs, workMs);
+            }
         }
         s.lastDrawn = drawStart;
 

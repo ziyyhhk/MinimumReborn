@@ -1,9 +1,14 @@
 # Minimum Reborn — Development Report
 
-Date: 2026-10-30 (phase 1 and phase 2 reports below)
+Date: 2026-10-30 (phase 1, phase 2 and phase 3 reports below)
 Target: Geometry Dash 2.2081 (Windows), Geode 5.11.2, C++20, CMake
 Repository: https://github.com/ziyyhhk/MinimumReborn
-Release package: `ziyyhhk.minimum-reborn.geode` (v1.1.0; v1.0.0 was the phase-1 build)
+Release package: `ziyyhhk.minimum-reborn.geode` (v1.2.1; v1.1.0 was the phase-2 build,
+v1.0.0 the phase-1 build)
+
+Phase 3 (§16–24) is the first in-game test. It corrects claims made in phases 1–2 where the
+measurements disproved them; earlier sections are kept as history, with the key correction
+inline and §23 listing what is still unverified.
 
 ## 1. Scope actually delivered
 
@@ -70,20 +75,21 @@ additive glow, clipping, z-order and atlases are exactly the original ones.
   `mod.json`, `about.md`, `changelog.md`, `ziyyhhk.minimum-reborn.dll` (181,248 bytes),
   package 69,697 bytes.
 * Tests performed: compile + link on MSVC/clang-cl via CI, mod.json schema validation by the
-  Geode build action, package structure inspection. **No runtime test in Geometry Dash has
-  been performed in this environment** (the game is not installed here).
+  Geode build action, package structure inspection. At the time of phase 1 no runtime test in
+  Geometry Dash had been performed (the game was not installed then). **Phase 3 ran the mod
+  in-game; see §16–24.**
 
 ## 5. Benchmarks
 
-None. No FPS or frame-time numbers are claimed. The overlay is the instrument for measuring on
-real hardware; the procedure is in README ("Benchmark procedure"). Any future figures must
-come from the same level, resolution, FPS cap and background workload, reported as a range over
-repeated runs, comparing average and p95 frame time and 1% low — not average FPS alone.
+At the time of phase 1: none. Phase 3 measured four 10 s runs in Geometry Dash; the numbers and
+their limits are in §18 and §23. They come from the same level, resolution, FPS cap and
+background workload, reported as observed, and are not a claim of an FPS gain.
 
 ## 6. Known limitations and risks
 
-* Not yet loaded in-game; startup and interaction bugs are possible and should be checked on
-  the first launch (see checklist below).
+* Phase 2: not yet loaded in-game. Phase 3 loaded it; startup, panel, overlay and benchmark
+  were exercised. See §21 for the UI defects that were found and fixed, and §23 for what was
+  not tested.
 * Off-screen particle culling uses a conservative analytic bound. Exotic systems with unusual
   custom motion could be culled while still visible; the toggle exists for that case.
 * Particle pool cap applies to systems created after the change; existing systems keep their
@@ -129,8 +135,9 @@ is in the source tree and in the v1.1.0 CI artifact; it has still not been run i
    All culling and fast-outs are gated on it, so an A/B test is one setting, not a reinstall.
 2. **Scene object culling** (new, the main phase-2 feature). Every `CCSprite::draw` in
    Optimized mode is tested against the viewport. A sprite whose whole quad is outside is not
-   drawn. This is the first culling of ordinary level objects (blocks, decorations, slope
-   textures, glow sprites, trails) in this project.
+   drawn. Phase 2 described this as culling ordinary level objects; **phase 3 measured that
+   claim and it is false for GD levels** — level objects are drawn through
+   `CCSpriteBatchNode`, so 0 of 18,939 sprite visits were culled. See §16.
 3. **Particle cull modes.** Off / Conservative / Aggressive, independent from the scene cull;
    the old boolean remains as the on/off master for particle culling.
 4. **Emitter-inside shortcut.** If the emitter position is inside the view, the system is drawn
@@ -180,8 +187,9 @@ collision and physics never see the culling code. Rendering never feeds back int
 * **Batching / a replacement renderer.** Z-order, additive glow, clipping and blending make a
   partial batcher a visual-correctness risk, and the SDK exposes no safe replacement path.
   "Optimized" is documented as a cheaper draw path, not a new renderer. No Bismuth code.
-* **Glow-specific toggle.** GD glow is an ordinary additive `CCSprite`; the sprite cull and
-  fast-out already cover it. A separate switch would only remove visuals.
+* **Glow-specific toggle.** GD glow is part of the batched level path (phase 3), so the
+  per-sprite cull and fast-out do not see it. A separate switch would remove visuals without
+  removing the batch submission.
 * **Dynamic resolution, GPU timers, `glFinish`.** Same reasoning as phase 1: no safe or
   non-blocking path through this SDK, and a blocking query would cost frames.
 * **Skipping particle simulation for off-screen systems.** Explicitly out of scope: an
@@ -226,3 +234,149 @@ collision and physics never see the culling code. Rendering never feeds back int
 counters), `src/frame_gate.cpp` (per-frame begin, per-second telemetry, benchmark feeding),
 `src/benchmark.{hpp,cpp}` (new), `src/ui.cpp` (panel modes, live readout, Bench),
 `CMakeLists.txt`, `mod.json`, `CHANGELOG.md`, `README.md`, this report.
+
+# Phase 3 (v1.2.1) — first in-game test
+
+The user provided the Geometry Dash install on this laptop
+(`C:\Users\akira\Documents\Games\Geometry Dash`, GD 2.2081, Geode 5.11.2) and asked for a real
+test. This section reports what was run, what was measured, what broke, and what changed as a
+result. It supersedes any "not verified at runtime" statement above.
+
+## 16. Procedure
+
+1. Installed the v1.1.0 build into `geode/mods`, launched GD, confirmed the mod loaded. Moved
+   the user's `minimum.optimization.geode` to `geode/mods_disabled_by_test/` so two
+   optimization mods did not fight over the same hooks (restore instructions are in the final
+   message; the file was not edited or deleted).
+2. Built v1.2.0 through GitHub Actions (run 41011043806), installed it, relaunched. The log
+   shows the new `CCSpriteBatchNode::draw` hook enabled for the mod.
+3. Entered Stereo Madness (Normal). A user-installed auto-player mod was active, so the level
+   played itself and restarted on death; no input was synthesized during a benchmark except
+   Escape (pause), mouse clicks on the panel, and the resume button.
+4. Opened the pause panel (MR button), selected a renderer, pressed Bench, closed the panel
+   with Escape, resumed the level, waited for the 10 s window, and read the benchmark line from
+   `geode/logs/Geode 2026-10-30 13.57.09.log`. Two runs per renderer, alternating.
+5. Captured the screen with a window-scoped tool (`tools/gdwin.ps1`) that brings GD to the
+   foreground and crops to its client area, so no other window contents were captured.
+
+## 17. What the first run found: level objects are batched
+
+The phase-2 model assumed every level object reaches `CCSprite::draw`. That is wrong. Game
+level objects such as blocks, spikes, decorations and glow are submitted by
+`CCSpriteBatchNode` layers (the bindings name them `m_gameLayerT4`, `m_gameGlowLayerT4`, ...).
+`GameObject` does not override `draw`, and the batch node draws its whole atlas itself, so the
+per-sprite hook never sees those objects.
+
+Evidence from the v1.2.0 benchmark (Stereo Madness, 10 s, 601 frames):
+
+```
+scene culled 0/18939 | particles skipped 0/601 | batches 24671 (231543 quads)
+scene culled 0/11891 | particles skipped 0/601 | batches 20898 (211759 quads)
+```
+
+That is 35–41 batch submissions and 352–385 quads per frame, versus 20–32 sprite visits per
+frame — the per-sprite hook sees about 3% of the drawable content. GD's object manager also
+keeps off-screen objects out of the draw, which is why the scene cull found nothing to skip.
+
+Consequences, applied in v1.2.1:
+
+* Scene culling defaulted **off** in Balanced. It remains available (Performance, Extreme,
+  settings) for unbatched content, where its test is still valid, but the product no longer
+  implies it culls level objects. `mod.json`, README and this report say what was measured.
+* A batch telemetry hook was added in v1.2.0 to count batch draws/quads. It only reads the
+  texture atlas and increments counters; it never edits atlas indices or reorders draws.
+* Rebuilding batch indices per frame to cull individual quads was rejected: it would mean
+  rewriting a GPU index buffer every frame and changing draw order for no measured gain on a
+  60 FPS-capped scene. That would be a different renderer, not this mod.
+
+## 18. Frame results and the 60 FPS cap
+
+GD caps in-level rendering at 60 FPS on this setup. Four runs, 601 drawn frames each:
+
+| Run | Renderer | Avg | p50 | p95 | 1% low | Draw CPU | Scene | Particles |
+|---|---|---|---|---|---|---|---|---|
+| A | Optimized | 16.67 ms | 16.34 | 17.36 | 39 fps | 3.10 ms | 0/18,939 | 0/601 |
+| B | Engine | 16.67 ms | 16.33 | 17.36 | 46 fps | 2.79 ms | — | — |
+| C | Engine | 16.67 ms | 16.33 | 17.36 | 44 fps | 2.88 ms | — | — |
+| D | Optimized | 16.67 ms | 16.33 | 17.35 | 42 fps | 2.78 ms | 0/11,891 | 0/601 |
+
+Average frame time is exactly the cap in every configuration, so **no FPS improvement is
+possible or claimed on this scene**. Draw CPU (`CCDirector::drawScene`, traversal plus GL
+submission) is 2.78–3.10 ms optimized vs 2.79–2.88 ms engine; the ranges overlap and the runs
+cover different parts of the level, so this is a wash, not a win. The panel/overlay numbers
+agree with the log because both read the same counters.
+
+The 1% low column is a single-run statistic (601 frames, six slowest averaged) and varies
+39–46 fps across runs; it is reported as observed, not as a stable property of either mode.
+No claim of reduced stutter is made.
+
+## 19. Particle and scene culling in practice
+
+* Scene: the hook ran (18,939 examinations) and skipped 0. This is expected after §17.
+  The fail-open test was never exercised with a non-zero cull in GD; that limitation is in
+  the README.
+* Particles: exactly one particle system per frame was examined and 0 were skipped, because
+  Stereo Madness's system stays on screen. The idle/off-screen paths therefore did not fire in
+  this level either. They remain enabled in Balanced because they cost one check per system
+  and only skip work that produces no pixels, but the report does not claim a saving.
+* No node updates, trigger logic or simulation were changed. The hooks only return before
+  `draw()`; `visit()` and the scheduler are untouched.
+
+## 20. Benchmark contamination found and fixed (v1.2.1)
+
+The v1.2.0 benchmark counted every drawn frame after the button was pressed. Because the
+button lives in the pause panel, the first ~1 s of each run was the pause screen; it still
+draws at 60 FPS, so it was included in all four runs above. The window now starts on the first
+**unpaused** frame and paused frames are skipped, and the log line gained invisible-sprite
+skips. This is the only measurement change in v1.2.1; the four v1.2.0 runs above were taken
+before it.
+
+## 21. UI problems observed and fixed
+
+* The v1.0/v1.1 pause panel overflowed the 320-unit design height: the title and footer were
+  cut off. v1.2.0 reduced the panel to 310 units and compressed the rows; the v1.2.0 screenshot
+  shows the title, all toggles, Reset/Bench/All Settings and the footer line.
+* The overlay default was Top Left, where GD's close button and attempt counter sit. It was
+  clipped by the close button in the v1.2.0 screenshot. The default is now Top Right. An
+  existing install keeps its stored `overlay-corner` value until Reset (or the setting) is
+  used; that persistence is expected Geode behavior, not a bug.
+* Escape pauses reliably when the window has foreground keyboard focus. Posting key messages
+  without focus did not pause GD; the test tool now focuses the window, then sends the key.
+
+## 22. Package size investigation
+
+The user asked why the `.geode` is small. Inspection of the v1.2.0 artifact (84,318 bytes):
+
+```
+.geode_cache 30 B | about.md 13,860 B | changelog.md 2,834 B | mod.json 10,917 B
+ziyyhhk.minimum-reborn.dll 208,384 B   (total unpacked 236,025 B)
+```
+
+All seven sources listed in `CMakeLists.txt` (`main`, `config`, `rendering`, `frame_gate`,
+`benchmark`, `system_tuning`, `ui`) are compiled into that DLL; there are no other object files
+to miss. The binary is small because it contains only this mod: cocos2d-x, Geode and the C++
+runtime are imported from the game install, not statically bundled. Nothing was added to
+inflate the package; the `about.md`/`changelog.md`/`mod.json` text and the `.geode_cache`
+marker are the only extras. A larger package would not mean more optimization.
+
+## 23. Limits of this evidence
+
+* One level (Stereo Madness), one laptop, one window size, 60 FPS cap, with an auto-player mod
+  and many other mods installed. Other levels, especially effect-heavy ones, will exercise the
+  particle paths differently.
+* Culling's visual correctness was not A/B compared frame-by-frame; the argument rests on the
+  fail-open test and on the fact that it skipped zero draws in the measured level. A run with a
+  non-zero cull count has not been captured.
+* No GPU timer, no uncapped test, no long session, no multiplayer/editor testing.
+* The four runs in §18 are v1.2.0 and include ~1 s of pause screen each. v1.2.1 was installed
+  and smoke-tested after the change; its benchmark excludes paused frames, so a direct numeric
+  comparison with the table above would not be apples-to-apples.
+
+## 24. Files touched in phase 3
+
+`src/rendering.cpp` (batch telemetry hook, `CCSpriteBatchNode` include), `src/benchmark.{hpp,cpp}`
+(draw ms, batch deltas, invisible sprites, unpaused start), `src/frame_gate.cpp` (feed the
+benchmark only when not paused), `src/config.cpp` (Balanced scene cull off, reset value),
+`src/ui.cpp` (panel height/layout), `src/config.hpp` (batch counters), `mod.json` (version,
+defaults, corrected descriptions), `CMakeLists.txt` (version), `README.md`, `CHANGELOG.md`,
+this report.

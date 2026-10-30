@@ -5,9 +5,9 @@
 	},
 	"id": "ziyyhhk.minimum-reborn",
 	"name": "Minimum Reborn",
-	"version": "v1.2.0",
+	"version": "v1.2.1",
 	"developer": "ziyyhhk",
-	"description": "A rendering-focused rebuild of Minimum. Engine or Optimized renderer mode, zero-pixel sprite and particle fast-outs, conservative scene and particle visibility culling, particle pool caps, and an optional render gate that keeps the scheduler running. Physics, input timing and the FPS cap are never changed. Windows build for Geometry Dash 2.2081.",
+	"description": "A rendering-focused rebuild of Minimum. Engine or Optimized renderer mode, zero-pixel sprite and particle fast-outs, particle pool caps, optional visibility culling, and an optional render gate that keeps the scheduler running. Physics, input timing and the FPS cap are never changed. Windows build for Geometry Dash 2.2081.",
 	"tags": [
 		"performance",
 		"utility"
@@ -22,7 +22,7 @@
 		},
 		"profile": {
 			"name": "Profile",
-			"description": "Balanced is the default. Default keeps particle effects closest to normal, Performance and Extreme lower the particle cap further. Selecting a profile writes its values into the settings once; editing any setting afterwards switches the profile to Custom. Nothing here changes physics, input timing or the game's FPS cap.",
+			"description": "Balanced is the default: optimized renderer, particle culling, scene culling off because GD batches level objects. Default keeps the engine renderer and full particle effects, Performance and Extreme lower the particle cap further and turn scene culling on. Selecting a profile writes its values into the settings once; editing any setting afterwards switches to Custom. Nothing here changes physics, input timing or the game's FPS cap.",
 			"type": "string",
 			"default": "Balanced",
 			"one-of": [
@@ -53,7 +53,7 @@
 		},
 		"renderer-mode": {
 			"name": "Renderer Mode",
-			"description": "Engine: every draw call goes through the unmodified game renderer; the mod only measures. Optimized: the mod's draw path runs - zero-pixel sprites and particle systems are not submitted, and objects entirely outside the viewport are skipped. Draw order, blending, glow, clipping and shaders are never changed. This is not a replacement rendering backend.",
+			"description": "Engine: every draw call goes through the unmodified game renderer; the mod only measures. Optimized: the mod's draw hooks run - zero-pixel sprites are not submitted and particle systems follow their own idle/off-screen settings. Draw order, blending, glow, clipping and shaders are never changed. This is not a replacement rendering backend.",
 			"type": "string",
 			"default": "Optimized",
 			"one-of": [
@@ -93,9 +93,9 @@
 		},
 		"scene-cull": {
 			"name": "Scene Object Culling",
-			"description": "Skips the draw call of sprites whose whole quad is outside the viewport plus a margin (160 units conservative, 16 aggressive). The test uses the parent's world transform and a rotation-safe radius, and any doubt answers draw. Node updates, animations, triggers, collisions and children are untouched - only the draw is skipped. Covers decorations, glow sprites and trails because they are all drawn through the same sprite path. Off in the Default profile.",
+			"description": "Skips the draw call of sprites whose whole quad is outside the viewport plus a margin (160 units conservative, 16 aggressive). Any doubt answers draw, and node updates, triggers, collisions and children are untouched. Off by default: phase-3 telemetry showed GD draws its level objects through CCSpriteBatchNode, so this per-sprite path examined 18,939 sprites and skipped 0 in Stereo Madness. It is opt-in for unbatched sprites (UI, effects, modded scenes), not a level-object culler.",
 			"type": "string",
-			"default": "Conservative",
+			"default": "Off",
 			"one-of": [
 				"Off",
 				"Conservative",
@@ -232,7 +232,7 @@
 		},
 		"benchmark-seconds": {
 			"name": "Benchmark Duration",
-			"description": "Length of the benchmark started from the pause menu. Only drawn frames in a level are recorded, and the result reports average, p50/p95 frame time, 1% low and how many draws the culling removed. Logged to the Geode log as well.",
+			"description": "Length of the benchmark started from the pause menu. Recording starts on the first unpaused frame after you resume; pause screens are not counted. The result reports average, p50/p95 frame time, 1% low, draw CPU time, culling deltas and batch draws, and is written to the Geode log too.",
 			"type": "int",
 			"min": 3,
 			"max": 60,

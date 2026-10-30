@@ -1,5 +1,31 @@
 # Changelog
 
+## v1.2.1 (2026-10-30)
+
+Phase 3: first in-game test, and the changes the measurements forced.
+
+* **Benchmark excludes paused frames.** The window now starts on the first unpaused frame, so
+  starting from the pause panel no longer records a static pause screen. The log line adds
+  invisible-sprite skips.
+* **Balanced profile leaves the scene cull off.** Measured 0 culls in 18,939 sprite visits on
+  Stereo Madness: GD batches level objects through `CCSpriteBatchNode`, so the per-sprite path
+  cannot see them. The cull stays available in Performance/Extreme and in the settings.
+* Setting descriptions corrected: renderer mode no longer claims level objects are culled;
+  scene culling says what it actually covers and quotes the measurement; benchmark text says
+  pause screens are not counted.
+
+## v1.2.0 (2026-10-30)
+
+Phase 3 instrumentation and UI fixes made before the first run.
+
+* **Batch-path telemetry**: a `CCSpriteBatchNode::draw` hook records batch draw calls and
+  quads per frame. It only counts; it never changes what the batch submits.
+* **Draw CPU time** in the benchmark (average `drawScene` time) and the batch counts, so a
+  run shows where the frame actually goes.
+* Pause panel fits the 320-unit design height again (title and footer visible).
+* Overlay default corner is Top Right so it no longer sits under GD's close button; Reset
+  writes the same corner.
+
 ## v1.1.0 (2026-10-30)
 
 Phase 2: real visibility culling and diagnostics.

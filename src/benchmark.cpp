@@ -84,6 +84,10 @@ namespace reborn {
         if (!std::isfinite(frameMs) || frameMs <= 0.0) return;
         if (std::isfinite(drawMs) && drawMs >= 0.0) g_drawSum += drawMs;
 
+        // The window starts on the first frame that is actually recorded (the caller feeds
+        // only unpaused frames), not when the button was pressed in the pause menu.
+        if (g_count == 0) g_start = now;
+
         if (g_count < kMaxSamples) {
             g_samples[g_count++] = static_cast<float>(std::min(frameMs, 1000.0));
         }
@@ -165,11 +169,12 @@ namespace reborn {
         log::info(
             "Minimum Reborn: benchmark {} - {} drawn frames in {:.1f} s, avg {:.2f} ms (p50 {:.2f}, p95 {:.2f}), "
             "1% low {:.0f} fps, variability {:.2f} ms, draw {:.2f} ms | scene culled {}/{} | particles skipped {}/{} | "
-            "batches {} ({} quads) | {}",
+            "invisible sprites {} | batches {} ({} quads) | {}",
             g_result.mode, g_result.frames, seconds, g_result.avgFrameMs, g_result.p50FrameMs,
             g_result.p95FrameMs, g_result.onePercentLowFps, g_result.variabilityMs, g_result.avgDrawMs,
             static_cast<unsigned long long>(sceneCulled), static_cast<unsigned long long>(sceneExamined),
             static_cast<unsigned long long>(particleSkipped), static_cast<unsigned long long>(particleExamined),
+            static_cast<unsigned long long>(spriteSkipped),
             static_cast<unsigned long long>(g_result.batchDraws), static_cast<unsigned long long>(g_result.batchQuads),
             g_summary
         );
