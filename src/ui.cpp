@@ -310,7 +310,8 @@ namespace {
         // Header, tabs, footer
         // -----------------------------------------------------------------------------
         void buildHeader() {
-            auto* logo = CCSprite::create("logo.png");
+            auto* logo = CCSprite::create("logo-128.png");
+            if (!logo) logo = CCSprite::create("logo.png");
             if (logo) {
                 float const h = logo->getContentSize().height;
                 logo->setScale(h > 0.f ? 42.f / h : 1.f);
@@ -321,7 +322,7 @@ namespace {
                 title->setAnchorPoint({0.f, 0.5f});
                 m_mainLayer->addChildAtPosition(title, Anchor::Center, ccp(-204.f, 151.f));
             }
-            if (auto* sub = makeLabel("draw-only optimization  |  v1.3.0", "chatFont.fnt", 0.42f, 190, true)) {
+            if (auto* sub = makeLabel("draw-only optimization  |  v1.3.1", "chatFont.fnt", 0.42f, 190, true)) {
                 m_mainLayer->addChildAtPosition(sub, Anchor::Center, ccp(-203.f, 137.f));
             }
 
@@ -989,6 +990,7 @@ class $modify(RebornPauseLayer, PauseLayer) {
         auto* bg = CCScale9Sprite::create(
             "reborn-button.png", {0.f, 0.f, 64.f, 64.f}, {20.f, 20.f, 20.f, 20.f}
         );
+        if (!bg) bg = CCScale9Sprite::create("square02b_001.png", {0.f, 0.f, 80.f, 80.f});
         if (bg) {
             bg->setContentSize({width, width});
             bg->setColor(ccc3(37, 43, 63));
@@ -997,11 +999,15 @@ class $modify(RebornPauseLayer, PauseLayer) {
             holder->addChild(bg);
         }
 
-        if (auto* icon = CCSprite::create("logo.png")) {
+        if (auto* icon = CCSprite::create("logo-128.png")) {
             float const h = icon->getContentSize().height;
             icon->setScale(h > 0.f ? 34.f / h : 1.f);
             icon->setPosition({width / 2.f, width / 2.f});
             holder->addChild(icon, 1);
+        }
+        else if (auto* fallback = makeLabel("MR", "bigFont.fnt", 0.5f)) {
+            fallback->setPosition({width / 2.f, width / 2.f});
+            holder->addChild(fallback, 1);
         }
 
         auto* button = CCMenuItemSpriteExtra::create(
@@ -1014,8 +1020,10 @@ class $modify(RebornPauseLayer, PauseLayer) {
         menu->addChild(button);
         menu->setPosition({0.f, 0.f});
 
+        // Right edge, level with the native pause row. Eclipse already owns the top-right
+        // corner of the pause menu, so the control lives below it instead of underneath it.
         auto const win = CCDirector::get()->getWinSize();
-        button->setPosition({win.width - 32.f, win.height - 32.f});
+        button->setPosition({win.width - 44.f, win.height / 2.f - 10.f});
         menu->setTouchPriority(-600);
         this->addChild(menu, 100);
     }

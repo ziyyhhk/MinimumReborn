@@ -4,7 +4,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 
-project(MinimumReborn VERSION 1.3.0)
+project(MinimumReborn VERSION 1.3.1)
 
 add_library(${PROJECT_NAME} SHARED
     src/main.cpp

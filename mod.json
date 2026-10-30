@@ -5,7 +5,7 @@
 	},
 	"id": "ziyyhhk.minimum-reborn",
 	"name": "Minimum Reborn",
-	"version": "v1.3.0",
+	"version": "v1.3.1",
 	"developer": "ziyyhhk",
 	"description": "A rendering-focused rebuild of Minimum with a native in-game control panel. Engine or Optimized renderer mode, zero-pixel and off-screen draw fast-outs, particle pool caps, an editor-only culling policy, and a No Additional Input Delay ordering mode that moves all mod bookkeeping behind the game's update. Physics, input handling and the game's FPS cap are never changed. Windows build for Geometry Dash 2.2081.",
 	"tags": [
@@ -315,11 +315,7 @@
 	},
 	"resources": {
 		"sprites": [
-			"icon-button.png",
-			"logo-128.png",
-			"reborn-button.png",
-			"reborn-button-selected.png",
-			"reborn-card.png"
+			"resources/*.png"
 		]
 	}
 }
