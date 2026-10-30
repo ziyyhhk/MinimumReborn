@@ -230,28 +230,75 @@ namespace {
     //     loads is not necessarily 80x80. Reading the size from the texture cache and taking
     //     a proportion of it keeps the corners intact; a fixed number produced a stretched
     //     right edge and a thin bar sticking out of every pill.
-    char const* const kPillSprite = "square02b_001.png";
-
-    // Rounded control, drawn with GD's own square sprite.
+    // -----------------------------------------------------------------------------
+    // Pill control
     //
-    // A nine-slice was tried first and produced a rounded left end with a square right end
-    // plus a thin bar sticking out of the pill: square02b_001.png reaches the engine as a
-    // trimmed atlas frame, so a rect/inset pair taken from the file's nominal size samples
-    // the wrong region. Setting the sprite's content size instead lets cocos stretch the
-    // frame it actually has. The corners stay rounded (slightly elliptical on a 20-unit
-    // tall row) and nothing depends on the texture's internal layout.
-    CCSprite* makePill(float width, float height, bool selected) {
-        auto* pill = CCSprite::create(kPillSprite);
-        if (!pill) return nullptr;
-        pill->setAnchorPoint({0.5f, 0.5f});
-        pill->setContentSize({width, height});
-        pill->setColor(selected ? ccc3(88, 132, 245) : ccc3(52, 60, 82));
-        pill->setOpacity(selected ? 255 : 225);
-        return pill;
-    }
+    // GD's rounded square (square02b_001.png) reaches the engine as a trimmed atlas
+    // frame. Stretching it into a 20-unit tall row drags the trimmed transparent margin
+    // into a visible sliver at one end, and a nine-slice with hard-coded cap insets lands
+    // on the wrong sub-rect of the atlas (rounded left end, square right end). Both
+    // artifacts were screenshotted. So the control is drawn from primitives the engine
+    // renders exactly as asked: a flat body plus a one-pixel highlight, which also gives
+    // every button, chip and cycle row the same shape and the same dark charcoal tone.
+    // -----------------------------------------------------------------------------
+    class Pill : public CCNode {
+    protected:
+        CCLayerColor* m_body = nullptr;
+        CCLayerColor* m_top = nullptr;
+        float m_width = 0.f;
+        float m_height = 0.f;
 
-    CCSprite* makeButtonBackground(float width, float height, bool selected) {
-        return makePill(width, height, selected);
+        bool init(float width, float height, ccColor3B color, std::uint8_t opacity) {
+            if (!CCNode::init()) return false;
+            m_width = width;
+            m_height = height;
+            this->setIgnoreAnchorPointForPosition(false);
+            this->setAnchorPoint({0.5f, 0.5f});
+            this->setContentSize({width, height});
+
+            m_body = CCLayerColor::create(ccc4(color.r, color.g, color.b, opacity), width, height);
+            if (!m_body) return false;
+            m_body->setIgnoreAnchorPointForPosition(false);
+            m_body->setAnchorPoint({0.5f, 0.5f});
+            m_body->setPosition({width / 2.f, height / 2.f});
+            this->addChild(m_body);
+
+            m_top = CCLayerColor::create(ccc4(255, 255, 255, 30), width, 1.f);
+            if (m_top) {
+                m_top->setIgnoreAnchorPointForPosition(false);
+                m_top->setAnchorPoint({0.5f, 0.5f});
+                m_top->setPosition({width / 2.f, height - 0.5f});
+                this->addChild(m_top);
+            }
+            return true;
+        }
+
+    public:
+        static Pill* create(float width, float height, ccColor3B color, std::uint8_t opacity) {
+            auto* ret = new Pill();
+            if (ret && ret->init(width, height, color, opacity)) {
+                ret->autorelease();
+                return ret;
+            }
+            CC_SAFE_DELETE(ret);
+            return nullptr;
+        }
+
+        void tint(ccColor3B color, std::uint8_t opacity) {
+            if (m_body) {
+                m_body->setColor(color);
+                m_body->setOpacity(opacity);
+            }
+        }
+    };
+
+    ccColor3B const kPillIdle = ccc3(46, 52, 68);
+    ccColor3B const kPillSelected = ccc3(52, 132, 96);
+
+    Pill* makeButtonBackground(float width, float height, bool selected) {
+        return Pill::create(width, height,
+                            selected ? kPillSelected : kPillIdle,
+                            selected ? 255 : 235);
     }
 
     enum class CycleKind {
@@ -280,11 +327,11 @@ namespace {
         struct ButtonRef {
             CCMenuItemSpriteExtra* item = nullptr;
             CCLabelBMFont* label = nullptr;
-            CCSprite* background = nullptr;
+            Pill* background = nullptr;
         };
 
         struct ChipRef {
-            CCSprite* bg = nullptr;
+            Pill* bg = nullptr;
             CCLabelBMFont* label = nullptr;
             std::string name;
         };
@@ -416,12 +463,14 @@ namespace {
 
             // Baseline the tabs sit on, plus the accent bar that marks the selected tab.
             if (auto* base = CCLayerColor::create(ccc4(255, 255, 255, 26), kContentWidth, 1)) {
+                base->setIgnoreAnchorPointForPosition(false);
                 base->setAnchorPoint({0.5f, 0.5f});
                 base->setPosition({kCX, kNavCenterY - kNavH / 2.f});
                 m_navRoot->addChild(base);
             }
             m_tabAccent = CCLayerColor::create(ccc4(96, 214, 141, 235), kTabWidth - 16.f, 2.f);
             if (m_tabAccent) {
+                m_tabAccent->setIgnoreAnchorPointForPosition(false);
                 m_tabAccent->setAnchorPoint({0.5f, 0.5f});
                 m_tabAccent->setPosition({kCX, kCY});
                 m_navRoot->addChild(m_tabAccent);
@@ -861,8 +910,7 @@ namespace {
             for (auto& chip : m_chips) {
                 bool const selected = chip.name == profile;
                 if (chip.bg) {
-                    chip.bg->setColor(selected ? ccc3(52, 132, 96) : ccc3(44, 50, 64));
-                    chip.bg->setOpacity(selected ? 255 : 225);
+                    chip.bg->tint(selected ? kPillSelected : kPillIdle, selected ? 255 : 235);
                 }
                 if (chip.label) chip.label->setColor(selected ? kTextPrimary : kTextMuted);
             }
@@ -1025,10 +1073,8 @@ class $modify(RebornPauseLayer, PauseLayer) {
         auto* holder = CCNode::create();
         holder->setContentSize({width, width});
 
-        auto* bg = makePill(width, width, false);
+        auto* bg = Pill::create(width, width, kPillIdle, 235);
         if (bg) {
-            bg->setColor(ccc3(46, 54, 76));
-            bg->setOpacity(235);
             bg->setPosition({width / 2.f, width / 2.f});
             holder->addChild(bg);
         }
