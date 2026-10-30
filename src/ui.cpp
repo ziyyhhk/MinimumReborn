@@ -233,12 +233,18 @@ namespace {
     char const* const kNineSliceFile = "square02b_001.png";
 
     float textureSide(char const* file, float fallback) {
-        auto* cache = CCTextureCache::sharedTextureCache();
-        if (!cache) return fallback;
-        auto* tex = cache->addImage(file);
-        if (!tex) return fallback;
-        float const side = tex->getContentSize().width;
-        return side > 1.f ? side : fallback;
+        // A throwaway sprite reports the rect the texture actually loaded, which is the
+        // number the cap insets have to be measured against. Resolved once per session.
+        static float cached = 0.f;
+        if (cached > 1.f) return cached;
+        if (auto* probe = CCSprite::create(file)) {
+            float const side = probe->getContentSize().width;
+            if (side > 1.f) {
+                cached = side;
+                return side;
+            }
+        }
+        return fallback;
     }
 
     CCScale9Sprite* makeNineSlice(float width, float height, float capRatio, bool selected) {
