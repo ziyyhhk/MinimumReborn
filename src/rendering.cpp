@@ -223,20 +223,6 @@ namespace {
         );
     }
 
-    // CCParticleSystemQuad's binding does not expose getDisplayedOpacity, so walk a short
-    // stretch of the parent chain instead. Any fully transparent or collapsed ancestor makes
-    // this system's pixels impossible; deeper than the walk limit the answer is "draw".
-    bool ancestorInvisible(CCNode* node) {
-        CCNode* current = node->getParent();
-        for (int depth = 0; depth < 8 && current; ++depth) {
-            if (current->getOpacity() == 0 || current->getScaleX() == 0.f || current->getScaleY() == 0.f) {
-                return true;
-            }
-            current = current->getParent();
-        }
-        return false;
-    }
-
     struct Bounds {
         double speed = 0.0;
         double life = 0.0;
@@ -463,11 +449,12 @@ struct ParticleDrawFastPath : Modify<ParticleDrawFastPath, CCParticleSystemQuad>
     void draw() {
         auto const& cfg = reborn::config();
         if (cfg.enabled && cfg.rendererOptimized) {
-            // Same zero-pixel cases as the sprite fast-out: a system at zero rendered
-            // opacity or zero scale cannot paint anything, so its full quad upload and GL
-            // state setup is wasted. Simulation still updates; only this draw is skipped.
-            if (this->getOpacity() == 0 || this->getScaleX() == 0.f || this->getScaleY() == 0.f
-                || ancestorInvisible(this)) {
+            // Same zero-pixel cases as the sprite fast-out: a system at zero opacity or zero
+            // scale cannot paint anything, so its full quad upload and GL state setup is
+            // wasted. Simulation still updates; only this draw submission is skipped. The
+            // inherited-opacity case is covered for sprites, whose binding exposes
+            // getDisplayedOpacity; CCNode's binding here does not.
+            if (this->getOpacity() == 0 || this->getScaleX() == 0.f || this->getScaleY() == 0.f) {
                 ++reborn::counters().invisibleParticleDrawsSkipped;
                 return;
             }
