@@ -164,7 +164,7 @@ namespace {
     // Popup
     // ---------------------------------------------------------------------------------
     constexpr float kPopupWidth = 380.f;
-    constexpr float kPopupHeight = 340.f;
+    constexpr float kPopupHeight = 310.f;
 
     CCScale9Sprite* makePanel(float width, float height, std::uint8_t opacity) {
         auto* panel = CCScale9Sprite::create("square02b_001.png", {0.f, 0.f, 80.f, 80.f});
@@ -232,12 +232,12 @@ namespace {
         void buildLive() {
             auto* panel = makePanel(kPopupWidth - 28.f, 54.f, 44);
             if (panel) {
-                m_buttonMenu->addChildAtPosition(panel, Anchor::Center, ccp(0.f, 132.f));
+                m_buttonMenu->addChildAtPosition(panel, Anchor::Center, ccp(0.f, 124.f));
             }
             mLive = CCLabelBMFont::create("--", "chatFont.fnt");
             mLive->setAlignment(kCCTextAlignmentCenter);
             mLive->setScale(0.62f);
-            m_buttonMenu->addChildAtPosition(mLive, Anchor::Center, ccp(0.f, 132.f));
+            m_buttonMenu->addChildAtPosition(mLive, Anchor::Center, ccp(0.f, 124.f));
         }
 
         void buildProfiles() {
@@ -248,7 +248,7 @@ namespace {
 
             auto* caption = CCLabelBMFont::create("Profile", "goldFont.fnt");
             caption->setScale(0.5f);
-            m_buttonMenu->addChildAtPosition(caption, Anchor::Center, ccp(0.f, 96.f));
+            m_buttonMenu->addChildAtPosition(caption, Anchor::Center, ccp(0.f, 88.f));
 
             for (std::size_t i = 0; i < 5; ++i) {
                 auto* holder = CCNode::create();
@@ -267,7 +267,7 @@ namespace {
                 auto* button = CCMenuItemSpriteExtra::create(holder, this, menu_selector(RebornPopup::onProfile));
                 button->setTag(static_cast<int>(i));
                 m_buttonMenu->addChildAtPosition(
-                    button, Anchor::Center, ccp(startX + static_cast<float>(i) * spacing, 72.f)
+                    button, Anchor::Center, ccp(startX + static_cast<float>(i) * spacing, 64.f)
                 );
                 m_profileButtons.push_back({background, kProfileNames[i]});
             }
@@ -296,7 +296,7 @@ namespace {
             auto* button = CCMenuItemSpriteExtra::create(holder, this, menu_selector(RebornPopup::onMode));
             button->setTag(tag);
             m_buttonMenu->addChildAtPosition(
-                button, Anchor::Center, ccp(-116.f + static_cast<float>(tag) * 116.f, 44.f)
+                button, Anchor::Center, ccp(-116.f + static_cast<float>(tag) * 116.f, 38.f)
             );
             return holder;
         }
@@ -308,7 +308,7 @@ namespace {
         }
 
         void buildToggles() {
-            float y = 14.f;
+            float y = 8.f;
             for (std::size_t i = 0; i < m_toggles.size(); ++i) {
                 auto* panel = makePanel(kPopupWidth - 44.f, 24.f, 20);
                 if (panel) {
@@ -328,12 +328,12 @@ namespace {
                     label, Anchor::Center, ccp(-kPopupWidth / 2.f + 58.f, y), ccp(0.f, 0.5f)
                 );
 
-                y -= 24.f;
+                y -= 22.f;
             }
         }
 
         void buildFooter() {
-            float const buttonY = -134.f;
+            float const buttonY = -126.f;
 
             {
                 auto* sprite = ButtonSprite::create("Reset", "goldFont.fnt", "GJ_button_05.png", 0.7f);
@@ -360,7 +360,7 @@ namespace {
                 );
                 fitLabel(info, 0.62f, kPopupWidth - 40.f);
                 info->setOpacity(185);
-                m_buttonMenu->addChildAtPosition(info, Anchor::Center, ccp(0.f, -158.f));
+                m_buttonMenu->addChildAtPosition(info, Anchor::Center, ccp(0.f, -146.f));
             }
         }
 

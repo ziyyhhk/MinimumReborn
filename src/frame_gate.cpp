@@ -259,7 +259,7 @@ struct RebornFrameGate : Modify<RebornFrameGate, CCDirector> {
             reborn::frameStats().push(std::min(frameMs, 1000.0), workMs);
             // Feeds the in-game benchmark with the same number the overlay uses. No-op
             // unless a run is active.
-            reborn::benchmarkNoteFrame(drawEnd, frameMs);
+            reborn::benchmarkNoteFrame(drawEnd, frameMs, workMs);
         }
         s.lastDrawn = drawStart;
 

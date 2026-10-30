@@ -5,7 +5,7 @@
 	},
 	"id": "ziyyhhk.minimum-reborn",
 	"name": "Minimum Reborn",
-	"version": "v1.1.0",
+	"version": "v1.2.0",
 	"developer": "ziyyhhk",
 	"description": "A rendering-focused rebuild of Minimum. Engine or Optimized renderer mode, zero-pixel sprite and particle fast-outs, conservative scene and particle visibility culling, particle pool caps, and an optional render gate that keeps the scheduler running. Physics, input timing and the FPS cap are never changed. Windows build for Geometry Dash 2.2081.",
 	"tags": [
@@ -251,9 +251,9 @@
 		},
 		"overlay-corner": {
 			"name": "Overlay Corner",
-			"description": "Where the overlay is drawn.",
+			"description": "Where the overlay is drawn. Top Right is the default because the level HUD uses the top-left corner for the attempt counter.",
 			"type": "string",
-			"default": "Top Left",
+			"default": "Top Right",
 			"one-of": [
 				"Top Left",
 				"Top Right",

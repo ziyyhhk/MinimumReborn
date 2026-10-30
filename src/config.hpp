@@ -59,7 +59,7 @@ namespace reborn {
         // Monitor.
         bool showOverlay = true;
         bool overlayDetailed = false;
-        Corner overlayCorner = Corner::TopLeft;
+        Corner overlayCorner = Corner::TopRight;
         float overlayScale = 0.5f;
         std::uint8_t overlayOpacity = 200;
         double targetFps = 60.0;
@@ -88,6 +88,11 @@ namespace reborn {
         std::atomic<std::uint64_t> sceneSpritesExamined{0};
         std::atomic<std::uint64_t> sceneSpriteDrawsSkipped{0};
         std::atomic<std::uint64_t> particleSystemsExamined{0};
+
+        // Batch-node telemetry. GD renders level objects through CCSpriteBatchNode, so these
+        // counts show how much of the scene actually reaches the per-sprite hook.
+        std::atomic<std::uint64_t> batchDraws{0};
+        std::atomic<std::uint64_t> batchQuads{0};
 
         std::atomic<std::uint32_t> fps{0};        // drawn frames per second, wall clock
         std::atomic<std::uint32_t> logicFps{0};   // scheduler updates per second

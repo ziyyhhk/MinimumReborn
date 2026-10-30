@@ -21,6 +21,7 @@ namespace reborn {
         int g_count = 0;
         bool g_active = false;
         double g_window = 10.0;
+        double g_drawSum = 0.0;
         std::chrono::steady_clock::time_point g_start{};
         BenchmarkResult g_result;
         char g_summary[224] = {};
@@ -31,6 +32,8 @@ namespace reborn {
         std::uint64_t g_baseParticleExamined = 0;
         std::uint64_t g_baseFramesDrawn = 0;
         std::uint64_t g_baseLogicOnly = 0;
+        std::uint64_t g_baseBatchDraws = 0;
+        std::uint64_t g_baseBatchQuads = 0;
 
         char const* cullShort(CullMode mode) {
             switch (mode) {
@@ -49,6 +52,7 @@ namespace reborn {
         g_window = std::clamp(seconds, 3.0, 60.0);
         g_active = true;
         g_count = 0;
+        g_drawSum = 0.0;
         g_start = now;
         g_result = BenchmarkResult{};
 
@@ -68,14 +72,17 @@ namespace reborn {
         g_baseParticleExamined = counters.particleSystemsExamined.load(std::memory_order_relaxed);
         g_baseFramesDrawn = counters.framesDrawn.load(std::memory_order_relaxed);
         g_baseLogicOnly = counters.framesLogicOnly.load(std::memory_order_relaxed);
+        g_baseBatchDraws = counters.batchDraws.load(std::memory_order_relaxed);
+        g_baseBatchQuads = counters.batchQuads.load(std::memory_order_relaxed);
 
         g_summary[0] = '\0';
         log::info("Minimum Reborn: benchmark started ({:.0f} s, {})", g_window, g_result.mode);
     }
 
-    void benchmarkNoteFrame(std::chrono::steady_clock::time_point now, double frameMs) {
+    void benchmarkNoteFrame(std::chrono::steady_clock::time_point now, double frameMs, double drawMs) {
         if (!g_active) return;
         if (!std::isfinite(frameMs) || frameMs <= 0.0) return;
+        if (std::isfinite(drawMs) && drawMs >= 0.0) g_drawSum += drawMs;
 
         if (g_count < kMaxSamples) {
             g_samples[g_count++] = static_cast<float>(std::min(frameMs, 1000.0));
@@ -135,6 +142,9 @@ namespace reborn {
         for (int i = g_count - slowCount; i < g_count; ++i) slowSum += sorted[i];
         double const slowAvg = slowSum / static_cast<double>(slowCount);
         g_result.onePercentLowFps = slowAvg > 0.0 ? 1000.0 / slowAvg : 0.0;
+        g_result.avgDrawMs = g_drawSum / static_cast<double>(g_count);
+        g_result.batchDraws = counters.batchDraws.load(std::memory_order_relaxed) - g_baseBatchDraws;
+        g_result.batchQuads = counters.batchQuads.load(std::memory_order_relaxed) - g_baseBatchQuads;
         g_result.sceneCulled = sceneCulled;
         g_result.particleSkipped = particleSkipped;
         g_result.spriteSkipped = spriteSkipped;
@@ -145,19 +155,22 @@ namespace reborn {
 
         std::snprintf(
             g_summary, sizeof(g_summary),
-            "%.1fs: %.0f fps | avg %.2f ms | p95 %.2f | 1%% low %.0f | scene %llu/%llu | particles %llu/%llu",
+            "%.1fs: %.0f fps | avg %.2f ms | p95 %.2f | 1%% low %.0f | draw %.2f ms | scene %llu/%llu | particles %llu/%llu",
             seconds, g_result.avgFps, g_result.avgFrameMs, g_result.p95FrameMs, g_result.onePercentLowFps,
+            g_result.avgDrawMs,
             static_cast<unsigned long long>(sceneCulled), static_cast<unsigned long long>(sceneExamined),
             static_cast<unsigned long long>(particleSkipped), static_cast<unsigned long long>(particleExamined)
         );
 
         log::info(
             "Minimum Reborn: benchmark {} - {} drawn frames in {:.1f} s, avg {:.2f} ms (p50 {:.2f}, p95 {:.2f}), "
-            "1% low {:.0f} fps, variability {:.2f} ms | scene culled {}/{} | particles skipped {}/{} | {}",
+            "1% low {:.0f} fps, variability {:.2f} ms, draw {:.2f} ms | scene culled {}/{} | particles skipped {}/{} | "
+            "batches {} ({} quads) | {}",
             g_result.mode, g_result.frames, seconds, g_result.avgFrameMs, g_result.p50FrameMs,
-            g_result.p95FrameMs, g_result.onePercentLowFps, g_result.variabilityMs,
+            g_result.p95FrameMs, g_result.onePercentLowFps, g_result.variabilityMs, g_result.avgDrawMs,
             static_cast<unsigned long long>(sceneCulled), static_cast<unsigned long long>(sceneExamined),
             static_cast<unsigned long long>(particleSkipped), static_cast<unsigned long long>(particleExamined),
+            static_cast<unsigned long long>(g_result.batchDraws), static_cast<unsigned long long>(g_result.batchQuads),
             g_summary
         );
     }

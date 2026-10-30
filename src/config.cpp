@@ -316,7 +316,7 @@ namespace reborn {
         mod->setSettingValue<bool>("show-overlay", true);
         mod->setSettingValue<int64_t>("benchmark-seconds", 10);
         mod->setSettingValue<std::string>("overlay-detail", "Compact");
-        mod->setSettingValue<std::string>("overlay-corner", "Top Left");
+        mod->setSettingValue<std::string>("overlay-corner", "Top Right");
         mod->setSettingValue<float>("overlay-scale", 0.5f);
         mod->setSettingValue<int64_t>("overlay-opacity", 200);
         mod->setSettingValue<int64_t>("target-fps", 60);

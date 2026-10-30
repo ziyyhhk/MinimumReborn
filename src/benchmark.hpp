@@ -26,6 +26,7 @@ namespace reborn {
         double p95FrameMs = 0.0;
         double onePercentLowFps = 0.0;
         double variabilityMs = 0.0;     // p95 - p50, same window
+        double avgDrawMs = 0.0;         // CPU time inside the drawScene call, per drawn frame
         std::uint64_t sceneCulled = 0;
         std::uint64_t particleSkipped = 0;
         std::uint64_t spriteSkipped = 0;
@@ -33,6 +34,8 @@ namespace reborn {
         std::uint64_t particlesExamined = 0;
         std::uint64_t framesDrawn = 0;
         std::uint64_t framesLogicOnly = 0;
+        std::uint64_t batchDraws = 0;   // CCSpriteBatchNode::draw calls in the window
+        std::uint64_t batchQuads = 0;   // quads those batch nodes submitted
         char mode[72] = {};
     };
 
@@ -40,7 +43,7 @@ namespace reborn {
     void benchmarkStart(std::chrono::steady_clock::time_point now, double seconds);
 
     // Records one drawn frame. Stops the run automatically when the window is over.
-    void benchmarkNoteFrame(std::chrono::steady_clock::time_point now, double frameMs);
+    void benchmarkNoteFrame(std::chrono::steady_clock::time_point now, double frameMs, double drawMs);
 
     // Stops early. A run that recorded nothing is discarded rather than reported.
     void benchmarkStop(std::chrono::steady_clock::time_point now);

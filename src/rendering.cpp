@@ -1,6 +1,7 @@
 #include <Geode/Geode.hpp>
 #include <Geode/modify/CCParticleSystemQuad.hpp>
 #include <Geode/modify/CCSprite.hpp>
+#include <Geode/modify/CCSpriteBatchNode.hpp>
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -349,6 +350,25 @@ struct SpriteDrawFastPath : Modify<SpriteDrawFastPath, CCSprite> {
             }
         }
         CCSprite::draw();
+    }
+};
+
+// Telemetry for the path GD actually uses for level objects. CCSpriteBatchNode draws all of
+// its children in one submission and never calls CCSprite::draw for them, so the per-sprite
+// counters above describe unbatched sprites only. Counting batches and their quads here shows
+// how much of the scene is batched (and therefore already outside the per-sprite hook).
+struct BatchNodeTelemetry : Modify<BatchNodeTelemetry, CCSpriteBatchNode> {
+    void draw() {
+        auto const& cfg = reborn::config();
+        if (cfg.enabled && cfg.rendererOptimized) {
+            ++reborn::counters().batchDraws;
+            if (m_pobTextureAtlas) {
+                reborn::counters().batchQuads.fetch_add(
+                    m_pobTextureAtlas->getTotalQuads(), std::memory_order_relaxed
+                );
+            }
+        }
+        CCSpriteBatchNode::draw();
     }
 };
 
