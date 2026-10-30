@@ -5,9 +5,9 @@
 	},
 	"id": "ziyyhhk.minimum-reborn",
 	"name": "Minimum Reborn",
-	"version": "v1.4.2",
+	"version": "v1.5.0",
 	"developer": "ziyyhhk",
-	"description": "A rendering-focused rebuild of Minimum with a native in-game control panel. Engine or Optimized renderer mode, zero-pixel and off-screen draw fast-outs, particle pool caps, an editor-only culling policy, and a No Additional Input Delay ordering mode that moves all mod bookkeeping behind the game's update. Physics, input handling and the game's FPS cap are never changed. Windows build for Geometry Dash 2.2081.",
+	"description": "A rendering-focused rebuild of Minimum with a native in-game control panel. Engine or Optimized renderer mode, zero-pixel and off-screen draw fast-outs, optional whole-batch visibility culling, particle pool caps, an editor-only culling policy, and a No Additional Input Delay ordering mode that moves all mod bookkeeping behind the game's update. Physics, input handling and the game's FPS cap are never changed. Windows build for Geometry Dash 2.2081.",
 	"tags": [
 		"performance",
 		"utility"
@@ -107,6 +107,12 @@
 			"description": "Limits how many particles one system can hold. The pool, quad and index buffers are allocated for the capped size, so nothing can index out of bounds. Only affects systems created after the change: re-enter the level.",
 			"type": "bool",
 			"default": true
+		},
+		"batch-cull": {
+			"name": "Batch culling (experimental)",
+			"description": "Skips the draw call of a whole CCSpriteBatchNode when the box of its current quads, transformed to world space, is completely outside the viewport plus the culling margin. This is the only path that can reach GD's batched level objects, which the per-sprite cull never sees. The vertex buffer is scanned in full or not at all, under a fixed per-frame budget of 24000 quads; a batch that cannot be measured exactly is drawn. Off by default because it is new and its gain has not been measured in a live level yet. Draw call only: no quad is modified and nothing is reordered.",
+			"type": "bool",
+			"default": false
 		},
 		"particle-cap": {
 			"name": "Particle Cap",

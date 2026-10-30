@@ -315,7 +315,7 @@ namespace {
     }
 
     enum class CycleKind {
-        Renderer, Cull, EditorCull, Detail, Corner, Priority, ParticleCap
+        Renderer, Cull, EditorCull, Detail, Corner, Priority, ParticleCap, SpawnBudget
     };
 
     struct CycleRef {
@@ -752,9 +752,18 @@ namespace {
         void buildCulling() {
             cycleRow(0, "Particles", CycleKind::Cull, "particle-cull-mode");
             cycleRow(1, "Scene sprites", CycleKind::Cull, "scene-cull");
-            headingRow(2, "PER SECOND");
-            statRow(3, "Scene sprites", "scene");
-            statRow(4, "Particle systems", "particles");
+
+            // Row 2 pairs the batch switch with the spawn budget: both are bounded-work
+            // controls and both are off by default.
+            float const half = (kContentWidth - kGap) / 2.f;
+            this->toggleRow(2, "batch-cull", "Batch culling", kLeft + 28.f);
+            // The toggle owns the left 150 units of this row; the cycle takes the rest.
+            float const restW = kRight - (kLeft + 160.f);
+            this->cycleRow(2, "Spawn budget", CycleKind::SpawnBudget, "spawn-budget", restW,
+                           kLeft + 160.f + restW / 2.f);
+
+            headingRow(3, "PER SECOND / PER SESSION");
+            statRow(4, "Sprites / particles", "cull-rate");
             statRow(5, "Batches", "batches");
             noteRow(6, "Draw-only. Simulation, physics, collisions and triggers are untouched.");
         }
@@ -962,6 +971,10 @@ namespace {
                     return mod->getSettingValue<std::string>("process-priority");
                 case CycleKind::ParticleCap:
                     return std::to_string(mod->getSettingValue<int64_t>("particle-cap"));
+                case CycleKind::SpawnBudget: {
+                    int64_t const budget = mod->getSettingValue<int64_t>("spawn-budget");
+                    return budget == 0 ? std::string("off") : std::to_string(budget);
+                }
             }
             return "--";
         }
@@ -1002,10 +1015,12 @@ namespace {
                                   + u64(counters.invisibleParticleDrawsSkipped),
                               u64(counters.emptyBatchDrawsSkipped));
             }
-            else if (id == "scene") {
-                std::snprintf(text, sizeof(text), "%u skipped / %u tested",
+            else if (id == "cull-rate") {
+                std::snprintf(text, sizeof(text), "sprites %u/%u   particles %u/%u per s",
                               counters.sceneCulledPerSec.load(std::memory_order_relaxed),
-                              counters.sceneExaminedPerSec.load(std::memory_order_relaxed));
+                              counters.sceneExaminedPerSec.load(std::memory_order_relaxed),
+                              counters.particleSkipsPerSec.load(std::memory_order_relaxed),
+                              counters.particleExaminedPerSec.load(std::memory_order_relaxed));
             }
             else if (id == "particles") {
                 std::snprintf(text, sizeof(text), "%u skipped / %u tested",
@@ -1013,8 +1028,9 @@ namespace {
                               counters.particleExaminedPerSec.load(std::memory_order_relaxed));
             }
             else if (id == "batches") {
-                std::snprintf(text, sizeof(text), "%llu empty skipped / %llu drawn",
-                              u64(counters.emptyBatchDrawsSkipped), u64(counters.batchDraws));
+                std::snprintf(text, sizeof(text), "%llu culled / %llu measured / %llu drawn",
+                              u64(counters.batchDrawsCulled), u64(counters.batchBoxesMeasured),
+                              u64(counters.batchDraws));
             }
             else if (id == "input") {
                 std::snprintf(text, sizeof(text), "%llu deferred / %llu scheduler",

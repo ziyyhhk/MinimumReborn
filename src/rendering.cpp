@@ -364,6 +364,8 @@ namespace {
         std::uint64_t editorParticlesExamined = 0;
         std::uint64_t editorParticlesSkipped = 0;
         std::uint64_t batchDraws = 0;
+        std::uint64_t batchCulled = 0;
+        std::uint64_t batchMeasured = 0;
         std::uint64_t batchQuads = 0;
         std::uint64_t emptyBatches = 0;
     };
@@ -381,6 +383,7 @@ namespace {
         bool editorCull = false;
         bool particleIdle = false;
         bool particleCull = false;
+        bool batchCull = false;
         bool editor = false;
         double sceneMargin = 160.0;
         double editorMargin = 160.0;
@@ -415,6 +418,81 @@ namespace {
         return pool;
     }
 
+    // ---------------------------------------------------------------------------------
+    // Whole-batch visibility (experimental, off by default)
+    // ---------------------------------------------------------------------------------
+    // GD submits level objects in batches, and a batch node never calls CCSprite::draw for
+    // its children, so the per-sprite test above cannot see any of them. This measures the
+    // batch's own extent instead: the axis-aligned box of the vertex buffer that visit()
+    // filled this frame, transformed to world space by the node's basis, tested against the
+    // viewport. If the whole box is outside, the single draw call for that batch is skipped -
+    // program activation, attribute setup, texture bind, the draw and every fragment under
+    // it. Nothing is reordered and no quad is touched.
+    //
+    // Safety, in the order it is enforced:
+    //   * the buffer is scanned in full or not at all. A batch whose quad count does not fit
+    //     in this frame's scan budget is drawn;
+    //   * all four vertices of every quad are folded into the box, so a rotated child is
+    //     covered exactly rather than by its center;
+    //   * the box is transformed by the node's world basis (four corners), so rotation and
+    //     scale of the batch node itself are covered;
+    //   * a missing atlas, an empty buffer, a non-finite vertex or a degenerate box all
+    //     answer "draw";
+    //   * the configured viewport margin is applied on top, which absorbs the camera moving
+    //     between the measurement and the next frame.
+    constexpr unsigned kBatchScanBudget = 24000;
+    unsigned g_batchScanLeft = 0;
+
+    // The atlas is passed in rather than read from the node: m_pobTextureAtlas is protected,
+    // and the hook that owns the call already has it.
+    bool batchOffScreen(CCSpriteBatchNode* batch, CCTextureAtlas* atlas, double margin) {
+        if (!atlas) return false;
+
+        unsigned int const quads = atlas->getTotalQuads();
+        if (quads == 0 || quads > g_batchScanLeft) return false;
+        auto* quad = atlas->getQuads();
+        if (!quad) return false;
+        g_batchScanLeft -= quads;
+
+        double minX = 1e300, minY = 1e300, maxX = -1e300, maxY = -1e300;
+        for (unsigned int i = 0; i < quads; ++i) {
+            V3F_C4B_T2F_Quad const& q = quad[i];
+            CCVertex const* corners[4] = {&q.bl.vertices, &q.br.vertices, &q.tr.vertices, &q.tl.vertices};
+            for (CCVertex const* v : corners) {
+                double const x = v->x;
+                double const y = v->y;
+                if (!std::isfinite(x) || !std::isfinite(y)) return false;
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
+            }
+        }
+        if (!(maxX > minX) || !(maxY > minY)) return false;
+
+        Basis basis;
+        if (!basisOf(batch, basis)) return false;
+
+        double worldMinX = 1e300, worldMinY = 1e300, worldMaxX = -1e300, worldMaxY = -1e300;
+        CCPoint const local[4] = {
+            ccp(minX, minY), ccp(maxX, minY), ccp(minX, maxY), ccp(maxX, maxY)
+        };
+        for (CCPoint const& p : local) {
+            CCPoint const w = toWorld(basis, p);
+            if (!isFinite(w.x) || !isFinite(w.y)) return false;
+            if (w.x < worldMinX) worldMinX = w.x;
+            if (w.x > worldMaxX) worldMaxX = w.x;
+            if (w.y < worldMinY) worldMinY = w.y;
+            if (w.y > worldMaxY) worldMaxY = w.y;
+        }
+
+        if (!g_view.valid) return false;
+        return worldMaxX < g_view.left - margin
+            || worldMinX > g_view.right + margin
+            || worldMaxY < g_view.bottom - margin
+            || worldMinY > g_view.top + margin;
+    }
+
 }  // namespace
 
 namespace reborn {
@@ -428,12 +506,18 @@ namespace reborn {
                               || c.sceneCull != CullMode::Off
                               || (c.cullOffscreenParticles && c.particleCull != CullMode::Off)
                               || c.skipIdleParticles
+                              || c.batchCull
                               || (c.editorCulling && c.editorCull != CullMode::Off));
             g_flags.spriteFastPath = on && c.spriteFastPath;
             g_flags.sceneCull = on && c.sceneCull != CullMode::Off;
             g_flags.editorCull = on && c.editorCulling && c.editorCull != CullMode::Off;
             g_flags.particleIdle = on && c.skipIdleParticles;
             g_flags.particleCull = on && c.cullOffscreenParticles && c.particleCull != CullMode::Off;
+            g_flags.batchCull = on && c.batchCull;
+            // Whole-frame vertex scan budget for the batch box. A batch that cannot be
+            // measured inside the budget is drawn, so the cost of the feature is bounded by
+            // this number and never by the size of the level.
+            g_batchScanLeft = g_flags.batchCull ? kBatchScanBudget : 0;
             g_flags.sceneMargin = c.sceneCullMargin;
             g_flags.editorMargin = c.editorCullMargin;
             g_flags.particleMargin = c.particleCullMargin;
@@ -482,6 +566,8 @@ namespace reborn {
         add(c.editorParticlesExamined, g_hot.editorParticlesExamined);
         add(c.editorParticleDrawsSkipped, g_hot.editorParticlesSkipped);
         add(c.batchDraws, g_hot.batchDraws);
+        add(c.batchDrawsCulled, g_hot.batchCulled);
+        add(c.batchBoxesMeasured, g_hot.batchMeasured);
         add(c.batchQuads, g_hot.batchQuads);
         add(c.emptyBatchDrawsSkipped, g_hot.emptyBatches);
     }
@@ -555,8 +641,7 @@ struct SpriteDrawFastPath : Modify<SpriteDrawFastPath, CCSprite> {
 // how much of the scene is batched (and therefore already outside the per-sprite hook).
 struct BatchNodeTelemetry : Modify<BatchNodeTelemetry, CCSpriteBatchNode> {
     void draw() {
-        auto const& cfg = reborn::config();
-        if (cfg.enabled && cfg.rendererOptimized) {
+        if (g_flags.any) {
             ++g_hot.batchDraws;
             if (m_pobTextureAtlas) {
                 unsigned int const quads = m_pobTextureAtlas->getTotalQuads();
@@ -567,6 +652,13 @@ struct BatchNodeTelemetry : Modify<BatchNodeTelemetry, CCSpriteBatchNode> {
                 if (quads == 0) {
                     ++g_hot.emptyBatches;
                     return;
+                }
+                if (g_flags.batchCull) {
+                    ++g_hot.batchMeasured;
+                    if (batchOffScreen(this, m_pobTextureAtlas, g_flags.sceneMargin)) {
+                        ++g_hot.batchCulled;
+                        return;
+                    }
                 }
             }
         }
