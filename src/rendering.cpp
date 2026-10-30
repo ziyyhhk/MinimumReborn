@@ -223,6 +223,20 @@ namespace {
         );
     }
 
+    // CCParticleSystemQuad's binding does not expose getDisplayedOpacity, so walk a short
+    // stretch of the parent chain instead. Any fully transparent or collapsed ancestor makes
+    // this system's pixels impossible; deeper than the walk limit the answer is "draw".
+    bool ancestorInvisible(CCNode* node) {
+        CCNode* current = node->getParent();
+        for (int depth = 0; depth < 8 && current; ++depth) {
+            if (current->getOpacity() == 0 || current->getScaleX() == 0.f || current->getScaleY() == 0.f) {
+                return true;
+            }
+            current = current->getParent();
+        }
+        return false;
+    }
+
     struct Bounds {
         double speed = 0.0;
         double life = 0.0;
@@ -452,8 +466,8 @@ struct ParticleDrawFastPath : Modify<ParticleDrawFastPath, CCParticleSystemQuad>
             // Same zero-pixel cases as the sprite fast-out: a system at zero rendered
             // opacity or zero scale cannot paint anything, so its full quad upload and GL
             // state setup is wasted. Simulation still updates; only this draw is skipped.
-            if (this->getDisplayedOpacity() == 0 || this->getOpacity() == 0
-                || this->getScaleX() == 0.f || this->getScaleY() == 0.f) {
+            if (this->getOpacity() == 0 || this->getScaleX() == 0.f || this->getScaleY() == 0.f
+                || ancestorInvisible(this)) {
                 ++reborn::counters().invisibleParticleDrawsSkipped;
                 return;
             }
