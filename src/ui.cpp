@@ -476,7 +476,9 @@ namespace {
 
             // Baseline the tabs sit on, plus the accent bar that marks the selected tab.
             if (auto* base = makeRect(kContentWidth, 1.f, ccc3(255, 255, 255), 26)) {
-                base->setPosition({kCX + kContentWidth / 2.f, kCY + kNavCenterY - kNavH / 2.f});
+                // The rect sprite is anchored at its centre, so the panel centre is its
+                // position - adding half the width here pushed the rule off the right edge.
+                base->setPosition({kCX, kCY + kNavCenterY - kNavH / 2.f});
                 m_navRoot->addChild(base);
             }
             m_tabAccent = makeRect(kTabWidth - 16.f, 2.f, ccc3(96, 214, 141), 235);
@@ -564,8 +566,7 @@ namespace {
                 fitLabel(label, selected ? 0.35f : 0.33f, kTabWidth - 8.f);
             }
             if (m_tabAccent) {
-                m_tabAccent->setPosition({kCX + tabCenter(static_cast<int>(m_page))
-                                               + (kTabWidth - 16.f) / 2.f,
+                m_tabAccent->setPosition({kCX + tabCenter(static_cast<int>(m_page)),
                                           kCY + kNavCenterY - kNavH / 2.f + 1.5f});
             }
         }
