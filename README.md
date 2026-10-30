@@ -108,16 +108,17 @@ Conservative vs Aggressive, on the same level and position.
 ## Measured performance
 
 Environment: Windows laptop, Geometry Dash 2.2081, Geode 5.11.2, window 1176 × 664, level
-Stereo Madness (Normal), an auto-player mod active, in-level FPS cap 60. Four 10 s runs, each
-started from the pause panel and resumed immediately; v1.2.0 counted about 1 s of pause screen
-at the start, v1.2.1 excludes paused frames.
+Stereo Madness (Normal), an auto-player mod active, in-level FPS cap 60. Each run was started
+from the pause panel and resumed immediately. Runs A–D are v1.2.0 and counted about 1 s of
+pause screen at the start; run E is v1.2.1 with paused frames excluded.
 
-| Run | Renderer | Frames | Avg | p50 | p95 | 1% low | Draw CPU | Scene culled | Particles skipped | Batches (quads) |
-|---|---|---|---|---|---|---|---|---|---|---|
-| A | Optimized | 601 | 16.67 ms | 16.34 ms | 17.36 ms | 39 fps | 3.10 ms | 0 / 18,939 | 0 / 601 | 24,671 (231,543) |
-| B | Engine | 601 | 16.67 ms | 16.33 ms | 17.36 ms | 46 fps | 2.79 ms | — | — | — |
-| C | Engine | 601 | 16.67 ms | 16.33 ms | 17.36 ms | 44 fps | 2.88 ms | — | — | — |
-| D | Optimized | 601 | 16.67 ms | 16.33 ms | 17.35 ms | 42 fps | 2.78 ms | 0 / 11,891 | 0 / 601 | 20,898 (211,759) |
+| Run | Version | Frames | Avg | p50 | p95 | 1% low | Draw CPU | Scene culled | Particles skipped | Sprite skips | Batches (quads) |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| A | 1.2.0 | 601 | 16.67 ms | 16.34 ms | 17.36 ms | 39 fps | 3.10 ms | 0 / 18,939 | 0 / 601 | — | 24,671 (231,543) |
+| B | 1.2.0 | 601 | 16.67 ms | 16.33 ms | 17.36 ms | 46 fps | 2.79 ms | — | — | — | — |
+| C | 1.2.0 | 601 | 16.67 ms | 16.33 ms | 17.36 ms | 44 fps | 2.88 ms | — | — | — | — |
+| D | 1.2.0 | 601 | 16.67 ms | 16.33 ms | 17.35 ms | 42 fps | 2.78 ms | 0 / 11,891 | 0 / 601 | — | 20,898 (211,759) |
+| E | 1.2.1 | 602 | 16.67 ms | 16.33 ms | 17.36 ms | 38 fps | 2.66 ms | 0 / 0 (off) | 0 / 598 | 1,516 | 21,330 (210,943) |
 
 What this does and does not show:
 
@@ -136,6 +137,9 @@ What this does and does not show:
   the per-sprite test. The default now reflects that. Particle culling has no off-screen
   targets on this level either; the counters are there so the claim can be checked on levels
   that do.
+* **The sprite fast-out did fire.** Run E skipped 1,516 draws in 10 s (~2.5 per frame) for
+  sprites with opacity 0, zero scale or empty size. That is the one skip path with a measured,
+  non-zero effect here; it is small in absolute terms and is not presented as an FPS win.
 * Where the mod can still help: uncapped/high-refresh rendering, batching-heavy custom
   content seen through the sprite path, particle spam, and background throttling. Those are
   not demonstrated by the table above.
@@ -223,21 +227,24 @@ folder shortcut) and start the game.
 
 Build evidence:
 
-* Workflow runs for v1.2.0 (41011043806) and v1.2.1 are green on Windows and upload
-  **MinimumReborn-Windows**. The v1.2.0 package was downloaded and inspected: `mod.json`,
-  `about.md`, `changelog.md`, `.geode_cache`, and `ziyyhhk.minimum-reborn.dll` (208,384 bytes,
-  Release, LTO). Archive size 84,318 bytes packed / 236,025 bytes unpacked. The small size is
-  the point: one DLL plus text; cocos2d, Geode and the C++ runtime are provided by the game
-  install, not bundled. Every source file in `CMakeLists.txt` is compiled; nothing is inflated
-  to look substantial.
+* Workflow runs for v1.2.0 ([41011043806](https://github.com/ziyyhhk/MinimumReborn/actions/runs/41011043806))
+  and v1.2.1 ([41012157311](https://github.com/ziyyhhk/MinimumReborn/actions/runs/41012157311))
+  completed green on Windows and uploaded **MinimumReborn-Windows**. The v1.2.1 package was
+  downloaded and inspected: `mod.json` v1.2.1, `about.md` 17,365 B, `changelog.md` 4,247 B,
+  `.geode_cache`, and `ziyyhhk.minimum-reborn.dll` 208,384 bytes (Release, LTO). Archive size
+  86,352 bytes packed / 241,101 bytes unpacked. The small size is the point: one DLL plus
+  text; cocos2d, Geode and the C++ runtime are provided by the game install, not bundled.
+  Every source file in `CMakeLists.txt` is compiled; nothing is inflated to look substantial.
 * Earlier runs are visible in Actions; run 41008194965 failed to compile
   (`CCSprite::getBoundingBox` is not exposed by the bindings) and was fixed in 41008425934.
 
 Runtime evidence (this laptop, details and numbers above):
 
 * The mod loaded with all hooks enabled in the Geode log, the pause panel opened, the overlay
-  drew, the Benchmark completed four times, and its numbers came from the same frame timing
-  the overlay uses. The panel and overlay were checked visually; the log lines quoted in this
+  drew, the Benchmark completed five times, and its numbers came from the same frame timing
+  the overlay uses. v1.2.1 was installed over v1.2.0 and relaunched; Reset was tested (overlay
+  moved to Top Right, profile Balanced, scene cull Off) and run E confirmed that paused frames
+  are excluded. The panel and overlay were checked visually; the log lines quoted in this
   README are from the run.
 * **Not measured:** other levels, other hardware, uncapped FPS, GPU time, long sessions,
   visual A/B against screenshots, input-to-photon latency. The culling's visual correctness is

@@ -13,6 +13,9 @@ Phase 3: first in-game test, and the changes the measurements forced.
 * Setting descriptions corrected: renderer mode no longer claims level objects are culled;
   scene culling says what it actually covers and quotes the measurement; benchmark text says
   pause screens are not counted.
+* Runtime evidence (Stereo Madness, 10 s): 602 frames in 10.0 s after resume, 1,516 invisible
+  sprite draws skipped, 0 scene culls with the cull off, 0/598 off-screen particles, 21,330
+  batch draws. 60 FPS cap held; no FPS gain is claimed.
 
 ## v1.2.0 (2026-10-30)
 

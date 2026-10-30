@@ -293,12 +293,13 @@ Consequences, applied in v1.2.1:
 
 GD caps in-level rendering at 60 FPS on this setup. Four runs, 601 drawn frames each:
 
-| Run | Renderer | Avg | p50 | p95 | 1% low | Draw CPU | Scene | Particles |
-|---|---|---|---|---|---|---|---|---|
-| A | Optimized | 16.67 ms | 16.34 | 17.36 | 39 fps | 3.10 ms | 0/18,939 | 0/601 |
-| B | Engine | 16.67 ms | 16.33 | 17.36 | 46 fps | 2.79 ms | — | — |
-| C | Engine | 16.67 ms | 16.33 | 17.36 | 44 fps | 2.88 ms | — | — |
-| D | Optimized | 16.67 ms | 16.33 | 17.35 | 42 fps | 2.78 ms | 0/11,891 | 0/601 |
+| Run | Version | Renderer | Avg | p50 | p95 | 1% low | Draw CPU | Scene | Particles | Sprite skips |
+|---|---|---|---|---|---|---|---|---|---|---|
+| A | 1.2.0 | Optimized | 16.67 ms | 16.34 | 17.36 | 39 fps | 3.10 ms | 0/18,939 | 0/601 | — |
+| B | 1.2.0 | Engine | 16.67 ms | 16.33 | 17.36 | 46 fps | 2.79 ms | — | — | — |
+| C | 1.2.0 | Engine | 16.67 ms | 16.33 | 17.36 | 44 fps | 2.88 ms | — | — | — |
+| D | 1.2.0 | Optimized | 16.67 ms | 16.33 | 17.35 | 42 fps | 2.78 ms | 0/11,891 | 0/601 | — |
+| E | 1.2.1 | Optimized | 16.67 ms | 16.33 | 17.36 | 38 fps | 2.66 ms | 0/0 (off) | 0/598 | 1,516 |
 
 Average frame time is exactly the cap in every configuration, so **no FPS improvement is
 possible or claimed on this scene**. Draw CPU (`CCDirector::drawScene`, traversal plus GL
@@ -312,9 +313,12 @@ No claim of reduced stutter is made.
 
 ## 19. Particle and scene culling in practice
 
-* Scene: the hook ran (18,939 examinations) and skipped 0. This is expected after §17.
-  The fail-open test was never exercised with a non-zero cull in GD; that limitation is in
-  the README.
+* Scene: the hook ran (18,939 examinations in run A) and skipped 0. This is expected after
+  §17; run E had the scene cull off, hence 0/0. The fail-open test was never exercised with a
+  non-zero cull in GD; that limitation is in the README.
+* Sprite fast-out: run E skipped 1,516 sprite draws in 602 frames (~2.5 per frame) for
+  zero-pixel/zero-scale/empty sprites. This is the only skip path with a measured non-zero
+  effect on Stereo Madness; it is not an FPS claim.
 * Particles: exactly one particle system per frame was examined and 0 were skipped, because
   Stereo Madness's system stays on screen. The idle/off-screen paths therefore did not fire in
   this level either. They remain enabled in Balanced because they cost one check per system
@@ -326,10 +330,10 @@ No claim of reduced stutter is made.
 
 The v1.2.0 benchmark counted every drawn frame after the button was pressed. Because the
 button lives in the pause panel, the first ~1 s of each run was the pause screen; it still
-draws at 60 FPS, so it was included in all four runs above. The window now starts on the first
+draws at 60 FPS, so it was included in runs A–D. The window now starts on the first
 **unpaused** frame and paused frames are skipped, and the log line gained invisible-sprite
-skips. This is the only measurement change in v1.2.1; the four v1.2.0 runs above were taken
-before it.
+skips. Run E confirms it: 602 frames in 10.0 s after resuming, plus 1,516 invisible-sprite
+skips. The four v1.2.0 runs above were taken before the change.
 
 ## 21. UI problems observed and fixed
 
@@ -345,12 +349,16 @@ before it.
 
 ## 22. Package size investigation
 
-The user asked why the `.geode` is small. Inspection of the v1.2.0 artifact (84,318 bytes):
+The user asked why the `.geode` is small. Inspection of the delivered v1.2.1 artifact
+(86,352 bytes packed, 241,101 bytes unpacked):
 
 ```
-.geode_cache 30 B | about.md 13,860 B | changelog.md 2,834 B | mod.json 10,917 B
-ziyyhhk.minimum-reborn.dll 208,384 B   (total unpacked 236,025 B)
+.geode_cache 30 B | about.md 17,365 B | changelog.md 4,247 B | mod.json 11,075 B
+ziyyhhk.minimum-reborn.dll 208,384 B
 ```
+
+The v1.2.0 artifact was 84,318 bytes packed (236,025 unpacked) with the same 208,384-byte DLL;
+the difference is the regenerated `about.md`/`changelog.md`/`mod.json`.
 
 All seven sources listed in `CMakeLists.txt` (`main`, `config`, `rendering`, `frame_gate`,
 `benchmark`, `system_tuning`, `ui`) are compiled into that DLL; there are no other object files
@@ -368,9 +376,9 @@ marker are the only extras. A larger package would not mean more optimization.
   fail-open test and on the fact that it skipped zero draws in the measured level. A run with a
   non-zero cull count has not been captured.
 * No GPU timer, no uncapped test, no long session, no multiplayer/editor testing.
-* The four runs in §18 are v1.2.0 and include ~1 s of pause screen each. v1.2.1 was installed
-  and smoke-tested after the change; its benchmark excludes paused frames, so a direct numeric
-  comparison with the table above would not be apples-to-apples.
+* Runs A–D are v1.2.0 and include ~1 s of pause screen each. Run E is v1.2.1 and excludes
+  paused frames, so its draw time is not directly comparable with A–D; it is included to show
+  the fixed recording window and a non-zero sprite-skip count, not as a faster result.
 
 ## 24. Files touched in phase 3
 
