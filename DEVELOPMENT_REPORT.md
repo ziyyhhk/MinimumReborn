@@ -617,3 +617,31 @@ it is recorded here so no future doc repeats it:
   facilitate AI-driven GD level generation/modification) is a **design reference only - no Bismuth
   code, shaders or assets are used**; the low-latency idea is drawn from Minimum (MIT, same author)
   and reimplemented, not copied.
+
+## 37. Build provenance, v1.4.0 to v1.6.0
+
+Every artifact in this report comes from a GitHub Actions run on `ziyyhhk/MinimumReborn`,
+Windows job, listed here so the binaries can be traced to a commit instead of to a claim.
+
+| version | commit | run | result |
+|---|---|---|---|
+| v1.4.0 | `5a406a0` (docs) after `54d562c` | 41042372882, 41042840841, 41045350929, 41045657056 | four failures (missing `getDisplayedOpacity` on `CCParticleSystemQuad`, no `getOpacity` on `CCNode`, texture-cache signature, `ccColor3B` naming), then success |
+| v1.4.1 | `c4a097f` | 41054230300 | success |
+| v1.4.2 | `5a406a0` | 41055925389 | success |
+| v1.5.0 | `91105a8` then `6a5ec15`, `35b8c9e`, `9cda21c` | 41057662650 failed (cocos vertex type names not exported); 41058343237, 41059054473, 41059516063 success | shipped, then the feature was removed |
+| v1.5.1 | `745af6b` | 41064373740 | success |
+| v1.5.2 | `0c12f41`, `8cd2878` | 41065148427, 41065901108 | success |
+| v1.6.0 | `c260c5e` | 41068134413 | success |
+| docs | `d10b24f` | 41070404905 | success |
+
+The installed package and `MinimumReborn.geode` in the repository are byte-identical, and the
+`changelog.md` embedded in the `.geode` is the one from the built commit, so what a user
+installs and what this report describes cannot drift apart silently.
+
+Failures are listed because they carry information: three of the four v1.4.0 failures were
+bindings that do not exist in this Geode version (`CCNode::getOpacity`,
+`CCParticleSystemQuad::getDisplayedOpacity`, `CCDirector::getTextureCache`, `CCLabelBMFont::setLimitWidth`,
+`CCNode::setIgnoreAnchorPointForPosition`), and the v1.5.0 failure was the cocos quad vertex
+types not being exported by name. Any future work on this codebase should assume those
+bindings are unavailable and read the texture or vertex data through the object that already
+hands it over.
