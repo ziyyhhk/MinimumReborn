@@ -389,14 +389,28 @@ namespace {
             // On a small window the panel would otherwise be wider than the screen, so the
             // whole popup is scaled down to fit. Touch handling follows the node transform,
             // so the hit boxes scale with it.
+            // Only the content layer is scaled: scaling the popup itself would also shrink
+            // the full-screen dimmer behind it and leave bright bands at the edges. Anything
+            // the Popup base class parents directly to the layer (frame, close button) is
+            // scaled and repositioned by the same factor, which is checked rather than
+            // assumed because that parenting differs between Geode versions.
             auto* director = CCDirector::get();
-            if (director) {
+            if (director && m_mainLayer) {
                 float const available = director->getVisibleSize().width;
                 float const wanted = kPopupWidth + 24.f;
                 if (available > 1.f && available < wanted) {
                     float const fit = available / wanted;
-                    this->setScale(fit);
-                    this->setAnchorPoint({0.5f, 0.5f});
+                    m_mainLayer->setScale(fit);
+                    if (m_bgSprite && m_bgSprite->getParent() != m_mainLayer) {
+                        m_bgSprite->setScale(fit);
+                        CCPoint const p = m_bgSprite->getPosition();
+                        m_bgSprite->setPosition({p.x * fit, p.y * fit});
+                    }
+                    if (m_closeBtn && m_closeBtn->getParent() != m_mainLayer) {
+                        m_closeBtn->setScale(fit);
+                        CCPoint const p = m_closeBtn->getPosition();
+                        m_closeBtn->setPosition({p.x * fit, p.y * fit});
+                    }
                 }
             }
 

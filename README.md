@@ -341,6 +341,11 @@ What that does and does not say:
 
 ### Shader-related work
 
+See [`SHADER_CULLING.md`](SHADER_CULLING.md) for the full accounting: which operations are
+avoided, where each decision is taken, how visibility is bounded, which object types are
+covered, what stays untouched, how correctness follows, and what has been measured.
+
+
 The skips return before `CCSprite::draw` / `CCParticleSystemQuad::draw`, which is where
 cocos2d activates the `CCGLProgram`, sets the vertex attribute pointers, binds the texture and
 issues the draw. So the work actually avoided per skipped node is program activation and
