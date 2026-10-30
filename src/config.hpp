@@ -44,11 +44,6 @@ namespace reborn {
         CullMode sceneCull = CullMode::Conservative;
         double particleCullMargin = 96.0;   // world units kept around the viewport
         double sceneCullMargin = 128.0;
-        // Experimental, off by default: skip the draw of a whole CCSpriteBatchNode when the
-        // axis-aligned box of its current quads, transformed to world space, is outside the
-        // viewport. The box is rebuilt from the live vertex buffer every frame under a fixed
-        // scan budget, and any batch that cannot be measured exactly is drawn.
-        bool batchCull = false;
         bool capParticles = true;
         bool adaptiveCap = false;        // lowers the cap while drawn frames stay slow
         unsigned int particleCap = 128;
@@ -113,8 +108,6 @@ namespace reborn {
         std::atomic<std::uint64_t> batchDraws{0};
         std::atomic<std::uint64_t> batchQuads{0};
         std::atomic<std::uint64_t> emptyBatchDrawsSkipped{0};
-        std::atomic<std::uint64_t> batchDrawsCulled{0};
-        std::atomic<std::uint64_t> batchBoxesMeasured{0};
 
         // Editor-only culling. Kept apart from the gameplay counters so a claim about editor
         // behavior can be checked on its own.

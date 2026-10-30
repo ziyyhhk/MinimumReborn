@@ -15,8 +15,7 @@ Every skip in this mod returns **before** the original cocos2d `draw()` runs. Fo
 * the texture bind;
 * the draw call itself for that node's four vertices;
 * for a particle system, the per-frame rebuild and upload of its quad buffer;
-* for a skipped batch (v1.5.0), the same sequence once for the whole batch, plus the
-  rasterization of every triangle in it.
+* for an empty batch, the program bind and the zero-quad submission that would follow it.
 
 That is the honest content of "avoiding shader setup for objects that will not be rendered".
 
@@ -28,7 +27,6 @@ That is the honest content of "avoiding shader setup for objects that will not b
 | Off-screen sprite skip | same, via `spriteOffScreen` | per sprite, at draw time |
 | Idle / zero-opacity / off-screen particle skip | `ParticleDrawFastPath::draw` | per particle system |
 | Empty batch skip | `BatchNodeTelemetry::draw` | per batch node |
-| Whole-batch off-screen skip (opt-in) | `batchOffScreen`, called from `BatchNodeTelemetry::draw` | per batch node |
 | Viewport snapshot used by all of them | `renderFrameBegin` | once per frame |
 | Editor vs gameplay policy | `renderFrameBegin` (one `LevelEditorLayer::get()` per frame) | once per frame |
 
@@ -50,11 +48,9 @@ No decision is taken inside an input callback, a scheduler callback, or a node's
   acceleration, start/end radius, position variance, source offset and particle size - scaled
   to world units. Free and grouped systems are always drawn because no safe bound exists. A
   center-inside shortcut keeps the common case at one circle test.
-* **Batches (opt-in)**: the axis-aligned box of the live vertex buffer that `visit()` filled
-  this frame, built from all four vertices of every quad, whose four corners are then
-  transformed by the batch node's world basis and tested against the viewport with a margin
-  floor of 64 world units. The buffer is scanned in full or not at all under a fixed per-frame
-  budget of 24,000 quads; a batch that cannot be measured exactly is drawn.
+* **Batches**: only the empty case. A whole-batch visibility test was implemented in v1.5.0
+  and removed in v1.5.1; section 8 explains the two failure modes the review found.
+
 * **Anything uncertain** - missing parent, missing atlas, empty or degenerate bounds,
   non-finite numbers, unknown position type - answers "draw".
 
@@ -103,12 +99,40 @@ a draw is skipped - which is why an object that scrolls back on screen looks ide
   number is the reason batch culling exists; its own gain is **not yet measured in a live
   level**, and it ships off by default for exactly that reason.
 
-## 8. The limitation, stated plainly
+## 8. The batch-level test that was built and then removed
+
+Level objects go through `CCSpriteBatchNode`, which submits one draw for many children and
+never calls `CCSprite::draw` for them. That is where the remaining draw work in a level
+actually lives, so v1.5.0 added a whole-batch visibility test: measure the axis-aligned box of
+the atlas vertex buffer, transform its four corners through the batch node's world basis, and
+skip the batch's single draw call when the result is entirely outside the viewport.
+
+A review of that code found two failure modes that cannot be ruled out from inside a mod, and
+both hide entire pieces of a level rather than one sprite:
+
+1. The measured range can be narrower than the submitted range. The scan covers
+   `getTotalQuads()` slots, while the engine can submit more entries than that: a child added
+   through `addSpriteWithoutQuad` exists in the descendant list with no quad, and slots past
+   `totalQuads` can still hold stale geometry from removed objects. Any of that can lie outside
+   the measured box, so a visible batch gets culled.
+2. Skipping the assembly can become self-sustaining. In cocos2d-x 3 and later the batch node
+   assembles its vertex buffer inside `draw()`. If GD's fork does the same, skipping that
+   `draw()` also skips the rebuild, so the next frame measures a buffer frozen at the moment of
+   the cull - and a batch whose children have since scrolled into view can stay culled
+   indefinitely, with nothing inside the mod able to notice.
+
+Which case applies depends on GD's exact fork, and settling it needs an in-game test on a level
+with off-screen batches. The options were therefore to ship it off by default and let the first
+player discover an invisible-piece-of-level bug, or remove it. It is removed. What remains for
+batches is the empty-buffer skip, which cannot hide anything.
+
+## 9. The limitation, stated plainly
 
 Geometry Dash renders through cocos2d-x with a per-texture-atlas batch per layer. A mod cannot
 do what Sodium does for Minecraft chunks - rebuild the geometry into visibility-aware sections,
-upload once and re-upload only what changed - because GD owns that buffer, rebuilds only dirty
-children, and would render stale geometry if a mod rewrote the quad array. The strongest
-defensible statement this file can make is that this mod removes draw submissions and their
-shader setup for work that cannot be seen, measures the removal, and leaves GD's batching,
+upload once and re-upload only what changed - because GD owns that buffer, decides when it is
+dirty, and would render stale geometry if a mod rewrote it or skipped its assembly. The strongest
+defensible statement this file can make: this mod removes draw submissions and their shader
+setup for work that cannot be seen - per sprite and per particle system, where the node's own
+transform is available and the bound is exact - measures the removal, and leaves GD's batching,
 ordering and shaders alone. Anything beyond that would be a claim, not an implementation.

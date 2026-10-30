@@ -1,5 +1,29 @@
 # Changelog
 
+## v1.5.1 (2026-10-30)
+
+A feature removed and one skip narrowed, both from reviewing the code rather than playing the
+game. `SHADER_CULLING.md` section 8 has the reasoning.
+
+* **Whole-batch visibility culling removed** (added in v1.5.0, off by default). Review found
+  two failure modes that hide entire batches: the scan covers `getTotalQuads()` slots while the
+  engine can submit more entries than that (children added without a quad, stale slots past the
+  count), and if the fork assembles the vertex buffer inside `draw()` then skipping that draw
+  also skips the rebuild, so a culled batch can stay culled forever. Settling it needs an
+  in-game test on a level with off-screen batches; an unmeasured gain did not justify shipping
+  a possible invisible-level bug, so the setting, counters and panel control are gone. The
+  empty-batch skip stays - it cannot hide anything.
+* **Sprite zero-opacity skip narrowed back to the node's own opacity.** The
+  `getDisplayedOpacity()` variant added in v1.4.0 is unsafe for a program that reads only the
+  vertex color's rgb, or for additive blending on a non-premultiplied texture, which can still
+  paint with vertex alpha 0. The narrower condition is the one observed in-game.
+* **Transform cache hardened against pointer reuse**: a node freed and reallocated at the same
+  address inside one frame would have been handed the previous occupant's world basis; entries
+  now also carry the parent pointer and node position, and the sibling memo carries the parent.
+* **Panel**: the Culling page keeps the spawn-budget cycle (a real setting that had no control
+  before v1.5.0) and the batch row reports empty-skipped versus drawn again.
+
+
 ## v1.4.0 (2026-10-30)
 
 Phase 5: the control panel rebuilt on one layout system, and an honest account of what the

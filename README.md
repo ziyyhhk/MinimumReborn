@@ -4,7 +4,7 @@ A rendering-focused optimization mod for Geometry Dash 2.2081, built with C++20 
 Geode SDK. It is a successor to [Minimum](https://github.com/ziyyhhk/Minimum), with the
 render path as the main subject rather than a settings collection.
 
-**Status: v1.5.0, built by GitHub Actions and run in Geometry Dash on a Windows laptop.**
+**Status: v1.5.1, built by GitHub Actions and run in Geometry Dash on a Windows laptop.**
 The runtime evidence in this README and in `DEVELOPMENT_REPORT.md` comes from that machine,
 not from estimates. It also changed the design: GD batches its level objects, so the
 per-sprite scene cull cannot see them. Scene culling is opt-in and off in the default

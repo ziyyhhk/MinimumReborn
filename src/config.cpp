@@ -252,7 +252,6 @@ namespace reborn {
         c.sceneCull = parseCullMode(mod->getSettingValue<std::string>("scene-cull"));
         c.particleCullMargin = marginFor(c.particleCull, 128.0, 8.0);
         c.sceneCullMargin = marginFor(c.sceneCull, 160.0, 16.0);
-        c.batchCull = mod->getSettingValue<bool>("batch-cull");
         c.capParticles = mod->getSettingValue<bool>("cap-particles");
         c.adaptiveCap = mod->getSettingValue<bool>("adaptive-cap");
 
@@ -320,7 +319,6 @@ namespace reborn {
         mod->setSettingValue<int64_t>("particle-cap", static_cast<int64_t>(kDefaultParticleCap));
         mod->setSettingValue<bool>("adaptive-cap", false);
         mod->setSettingValue<int64_t>("spawn-budget", 0);
-        mod->setSettingValue<bool>("batch-cull", false);
         mod->setSettingValue<bool>("no-input-delay", true);
         mod->setSettingValue<bool>("editor-culling", true);
         mod->setSettingValue<std::string>("editor-cull-mode", "Conservative");

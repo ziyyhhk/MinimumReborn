@@ -767,18 +767,13 @@ namespace {
             cycleRow(0, "Particles", CycleKind::Cull, "particle-cull-mode");
             cycleRow(1, "Scene sprites", CycleKind::Cull, "scene-cull");
 
-            // Row 2 pairs the batch switch with the spawn budget: both are bounded-work
-            // controls and both are off by default.
-            float const half = (kContentWidth - kGap) / 2.f;
-            this->toggleRow(2, "batch-cull", "Batch culling", kLeft + 28.f);
-            // The toggle owns the left 150 units of this row; the cycle takes the rest.
-            float const restW = kRight - (kLeft + 160.f);
-            this->cycleRow(2, "Spawn budget", CycleKind::SpawnBudget, "spawn-budget", restW,
-                           kLeft + 160.f + restW / 2.f);
+            // Off by default and bounded per frame: past this many particle systems created
+            // in one frame, further systems get a 4-particle pool instead of a full buffer.
+            cycleRow(2, "Spawn budget", CycleKind::SpawnBudget, "spawn-budget", 220.f, 60.f);
 
             headingRow(3, "PER SECOND / PER SESSION");
             statRow(4, "Sprites / particles", "cull-rate");
-            statRow(5, "Batches", "batches");
+            statRow(5, "Batches (session)", "batches");
             noteRow(6, "Draw-only. Simulation, physics, collisions and triggers are untouched.");
         }
 
@@ -1042,9 +1037,8 @@ namespace {
                               counters.particleExaminedPerSec.load(std::memory_order_relaxed));
             }
             else if (id == "batches") {
-                std::snprintf(text, sizeof(text), "%llu culled / %llu measured / %llu drawn",
-                              u64(counters.batchDrawsCulled), u64(counters.batchBoxesMeasured),
-                              u64(counters.batchDraws));
+                std::snprintf(text, sizeof(text), "%llu empty skipped / %llu drawn",
+                              u64(counters.emptyBatchDrawsSkipped), u64(counters.batchDraws));
             }
             else if (id == "input") {
                 std::snprintf(text, sizeof(text), "%llu deferred / %llu scheduler",
