@@ -224,7 +224,7 @@ namespace {
     CCScale9Sprite* makeButtonBackground(float width, float height, bool selected) {
         auto* bg = CCScale9Sprite::create(
             selected ? "reborn-button-selected.png"_spr : "reborn-button.png"_spr,
-            {0.f, 0.f, 64.f, 64.f}, {20.f, 20.f, 20.f, 20.f}
+            {0.f, 0.f, 64.f, 64.f}, {7.f, 7.f, 7.f, 7.f}
         );
         if (!bg) bg = CCScale9Sprite::create("square02b_001.png", {0.f, 0.f, 80.f, 80.f});
         if (!bg) return nullptr;
@@ -296,6 +296,7 @@ namespace {
         bool init() {
             if (!Popup::init(kPopupWidth, kPopupHeight, "square01_001.png")) return false;
             this->setID("minimum-reborn-popup"_spr);
+            if (m_bgSprite) m_bgSprite->setVisible(false);
 
             if (auto* panel = makeCard(kPopupWidth, kPopupHeight)) {
                 panel->setColor(ccc3(15, 18, 30));
@@ -998,7 +999,7 @@ class $modify(RebornPauseLayer, PauseLayer) {
         holder->setContentSize({width, width});
 
         auto* bg = CCScale9Sprite::create(
-            "reborn-button.png"_spr, {0.f, 0.f, 64.f, 64.f}, {20.f, 20.f, 20.f, 20.f}
+            "reborn-button.png"_spr, {0.f, 0.f, 64.f, 64.f}, {8.f, 8.f, 8.f, 8.f}
         );
         if (!bg) bg = CCScale9Sprite::create("square02b_001.png", {0.f, 0.f, 80.f, 80.f});
         if (bg) {
