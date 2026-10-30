@@ -45,6 +45,7 @@ namespace reborn {
         double particleCullMargin = 96.0;   // world units kept around the viewport
         double sceneCullMargin = 128.0;
         bool capParticles = true;
+        bool adaptiveCap = false;        // lowers the cap while drawn frames stay slow
         unsigned int particleCap = 128;
         unsigned int spawnBudget = 0;    // particle systems per frame that get a full pool; 0 = off
 
@@ -99,6 +100,9 @@ namespace reborn {
         std::atomic<std::uint32_t> logicOnlyPerSec{0};
         std::atomic<std::uint32_t> cappedPerSec{0};
         std::atomic<std::uint32_t> sceneCulledPerSec{0};
+        std::atomic<std::uint32_t> sceneExaminedPerSec{0};
+        std::atomic<std::uint32_t> particleExaminedPerSec{0};
+        std::atomic<std::uint32_t> capStep{0};   // 0 = configured cap, >0 = adaptive cap in effect
     };
 
     // 0 = unknown, 1 = main-thread/draw bound hint, 2 = GPU or outside-draw hint.
@@ -119,6 +123,11 @@ namespace reborn {
     // Windows only: true unless the game window is positively known to be in the background.
     // Polls at most every 250 ms; needs two unfocused polls in a row.
     bool processHasForeground(std::chrono::steady_clock::time_point now);
+
+    // Adaptive particle cap (opt-in). Called about twice a second with the average frame time
+    // of drawn frames. Lowers the cap in steps while frames stay slow, relaxes back towards
+    // the configured cap when they recover. Never touches physics, timing or input.
+    void noteFrameHealth(double avgFrameMs, double targetFps, bool inLevel);
 
     // True while drawing is being limited because the window is not focused.
     bool backgroundThrottled(std::chrono::steady_clock::time_point now);

@@ -125,6 +125,13 @@
 			"max": 200,
 			"default": 0
 		},
+		"adaptive-cap": {
+			"name": "Adaptive Particle Cap",
+			"description": "Experimental and off by default. While drawn frames stay slower than the Target FPS, the particle pool is lowered in steps (never below 24) and logged; it relaxes back to the configured cap when frames recover. Only affects systems created afterwards, so the effect appears as new effects spawn. It never changes timing, physics or input.",
+			"type": "bool",
+			"default": false,
+			"enable-if": "cap-particles"
+		},
 		"title-pacing": {
 			"type": "title",
 			"name": "Frame Pacing (Windows)",

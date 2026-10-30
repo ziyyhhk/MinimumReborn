@@ -312,9 +312,7 @@ namespace reborn {
         g_view.valid = true;
     }
 
-    unsigned int effectiveParticleCap() {
-        return config().particleCap;
-    }
+    unsigned int effectiveParticleCap();  // defined in config.cpp (adaptive step included)
 
     bool visibilityCullingActive() {
         auto const& cfg = config();

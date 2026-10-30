@@ -69,6 +69,8 @@ namespace {
         std::uint64_t seenCapped = 0;
         std::uint64_t seenLogicOnly = 0;
         std::uint64_t seenSceneCulled = 0;
+        std::uint64_t seenSceneExamined = 0;
+        std::uint64_t seenParticleExamined = 0;
     };
 
     GateState& state() {
@@ -115,14 +117,24 @@ namespace {
             static_cast<double>(logicOnly - s.seenLogicOnly) / span + 0.5
         ));
         auto const sceneCulled = counters.sceneSpriteDrawsSkipped.load(std::memory_order_relaxed);
+        auto const sceneExamined = counters.sceneSpritesExamined.load(std::memory_order_relaxed);
+        auto const particleExamined = counters.particleSystemsExamined.load(std::memory_order_relaxed);
         counters.sceneCulledPerSec.store(static_cast<std::uint32_t>(
             static_cast<double>(sceneCulled - s.seenSceneCulled) / span + 0.5
+        ));
+        counters.sceneExaminedPerSec.store(static_cast<std::uint32_t>(
+            static_cast<double>(sceneExamined - s.seenSceneExamined) / span + 0.5
+        ));
+        counters.particleExaminedPerSec.store(static_cast<std::uint32_t>(
+            static_cast<double>(particleExamined - s.seenParticleExamined) / span + 0.5
         ));
         s.seenSpriteSkips = spriteSkips;
         s.seenParticleSkips = idleSkips + offscreenSkips;
         s.seenCapped = capped;
         s.seenLogicOnly = logicOnly;
         s.seenSceneCulled = sceneCulled;
+        s.seenSceneExamined = sceneExamined;
+        s.seenParticleExamined = particleExamined;
 
         // Bottleneck hint from this mod's own numbers. workMs is the CPU time of the
         // drawScene call (traversal + GL submission), frameMs is the wall time between
@@ -141,6 +153,12 @@ namespace {
                             : ratio <= 0.4 ? reborn::Bottleneck::GpuOrOther
                             : reborn::Bottleneck::Unknown;
             counters.bottleneck.store(static_cast<std::uint8_t>(hint));
+        }
+
+        // Adaptive particle cap (opt-in): looks at the same window, steps the pool size down
+        // while drawn frames stay slow and relaxes it when they recover. Never touches timing.
+        if (measurable) {
+            reborn::noteFrameHealth(frameMs, reborn::config().targetFps, PlayLayer::get() != nullptr);
         }
         s.windowDrawn = 0;
         s.windowAll = 0;

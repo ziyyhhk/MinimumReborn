@@ -103,7 +103,7 @@ namespace {
                     text, sizeof(text),
                     "%s%u FPS%s | avg %.1f ms | p95 %.1f ms | 1%% low %s\n"
                     "logic %u/s | draw %.2f ms | %s | renderer %s\n"
-                    "scene culled %u/s | sprite skips %u/s | particle skips %u/s | pools capped %u/s | logic-only %u/s",
+                    "scene %u of %u/s | sprite fast-out %u/s | particles %u of %u/s | capped %u/s | logic-only %u/s",
                     cfg.enabled ? "" : "(OFF) ", fps,
                     counters.throttled.load(std::memory_order_relaxed) ? " (background)" : "",
                     avgMs, p95Ms, lowText,
@@ -111,8 +111,10 @@ namespace {
                     bottleneckLabel(static_cast<reborn::Bottleneck>(counters.bottleneck.load(std::memory_order_relaxed))),
                     cfg.rendererOptimized ? "optimized" : "engine",
                     counters.sceneCulledPerSec.load(std::memory_order_relaxed),
+                    counters.sceneExaminedPerSec.load(std::memory_order_relaxed),
                     counters.spriteSkipsPerSec.load(std::memory_order_relaxed),
                     counters.particleSkipsPerSec.load(std::memory_order_relaxed),
+                    counters.particleExaminedPerSec.load(std::memory_order_relaxed),
                     counters.cappedPerSec.load(std::memory_order_relaxed),
                     counters.logicOnlyPerSec.load(std::memory_order_relaxed)
                 );
@@ -390,11 +392,17 @@ namespace {
                 );
             }
 
+            char capText[24] = "";
+            unsigned int const capStep = counters.capStep.load(std::memory_order_relaxed);
+            if (capStep > 0) {
+                std::snprintf(capText, sizeof(capText), " | adaptive cap %u", capStep);
+            }
+
             char text[384];
             std::snprintf(
                 text, sizeof(text),
                 "%u FPS  |  avg %.1f ms  |  1%% low %.0f  |  logic %u/s\n"
-                "renderer %s  |  scene %s %u/s  |  particles %s %u/s%s%s",
+                "renderer %s  |  scene %s %u/s  |  particles %s %u/s%s%s%s",
                 counters.fps.load(std::memory_order_relaxed),
                 stats.averageFrameMs(120),
                 stats.onePercentLowFps(240),
@@ -402,6 +410,7 @@ namespace {
                 cfg.rendererOptimized ? "optimized" : "engine",
                 cullShort(cfg.sceneCull), counters.sceneCulledPerSec.load(std::memory_order_relaxed),
                 cullShort(cfg.particleCull), counters.particleSkipsPerSec.load(std::memory_order_relaxed),
+                capText,
                 third[0] ? "\n" : "",
                 third
             );

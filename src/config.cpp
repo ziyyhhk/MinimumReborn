@@ -34,6 +34,16 @@ namespace reborn {
         int g_unfocusedPolls = 0;
         std::string g_lastAppliedProfile;
 
+        // Adaptive particle cap state. 0 = inactive (the configured cap is used). Only ever
+        // changed from the drawScene hook, i.e. the main thread.
+        unsigned int g_adaptiveCap = 0;
+        int g_slowWindows = 0;
+        int g_fastWindows = 0;
+
+        constexpr unsigned int kAdaptiveFloor = 24;
+        constexpr int kSlowWindowsToStep = 2;
+        constexpr int kFastWindowsToStep = 6;
+
         constexpr unsigned int kDefaultParticleCap = 128;
         constexpr int kDefaultBackgroundFps = 20;
 
@@ -145,6 +155,66 @@ namespace reborn {
         return g_counters;
     }
 
+    unsigned int effectiveParticleCap() {
+        auto const& cfg = config();
+        if (!cfg.enabled || !cfg.adaptiveCap || g_adaptiveCap == 0) return cfg.particleCap;
+        return std::min(cfg.particleCap, g_adaptiveCap);
+    }
+
+    void noteFrameHealth(double avgFrameMs, double targetFps, bool inLevel) {
+        auto const& cfg = config();
+        unsigned int const configured = cfg.particleCap;
+
+        if (!cfg.enabled || !cfg.adaptiveCap || !inLevel || avgFrameMs <= 0.0 || targetFps <= 0.0) {
+            if (g_adaptiveCap != 0) {
+                g_adaptiveCap = 0;
+                g_slowWindows = 0;
+                g_fastWindows = 0;
+                g_counters.capStep.store(0);
+            }
+            return;
+        }
+
+        double const targetMs = 1000.0 / targetFps;
+        if (avgFrameMs > targetMs * 1.35) {
+            g_fastWindows = 0;
+            if (++g_slowWindows < kSlowWindowsToStep) return;
+            g_slowWindows = 0;
+
+            unsigned int base = g_adaptiveCap == 0 ? configured : g_adaptiveCap;
+            unsigned int const next = std::max(base * 3u / 4u, kAdaptiveFloor);
+            if (next < configured && next != g_adaptiveCap) {
+                g_adaptiveCap = next;
+                g_counters.capStep.store(next);
+                log::info(
+                    "Adaptive cap: particle pool lowered to {} (avg {:.2f} ms, target {:.2f} ms)",
+                    next, avgFrameMs, targetMs
+                );
+            }
+        }
+        else if (avgFrameMs < targetMs * 1.05) {
+            g_slowWindows = 0;
+            if (++g_fastWindows < kFastWindowsToStep) return;
+            g_fastWindows = 0;
+
+            if (g_adaptiveCap == 0) return;
+            unsigned int const next = g_adaptiveCap * 5u / 4u;
+            if (next >= configured) {
+                g_adaptiveCap = 0;
+                g_counters.capStep.store(0);
+                log::info("Adaptive cap: recovered, using the configured {} particles", configured);
+            }
+            else {
+                g_adaptiveCap = next;
+                g_counters.capStep.store(next);
+            }
+        }
+        else {
+            g_slowWindows = 0;
+            g_fastWindows = 0;
+        }
+    }
+
     void refreshConfig() {
         auto* mod = Mod::get();
 
@@ -173,6 +243,7 @@ namespace reborn {
         c.particleCullMargin = marginFor(c.particleCull, 128.0, 8.0);
         c.sceneCullMargin = marginFor(c.sceneCull, 160.0, 16.0);
         c.capParticles = mod->getSettingValue<bool>("cap-particles");
+        c.adaptiveCap = mod->getSettingValue<bool>("adaptive-cap");
 
         int64_t cap = mod->getSettingValue<int64_t>("particle-cap");
         c.particleCap = static_cast<unsigned int>(std::clamp<int64_t>(cap, 4, 1000));
@@ -231,6 +302,7 @@ namespace reborn {
         mod->setSettingValue<std::string>("scene-cull", "Conservative");
         mod->setSettingValue<bool>("cap-particles", true);
         mod->setSettingValue<int64_t>("particle-cap", static_cast<int64_t>(kDefaultParticleCap));
+        mod->setSettingValue<bool>("adaptive-cap", false);
         mod->setSettingValue<int64_t>("spawn-budget", 0);
 #ifdef GEODE_IS_WINDOWS
         mod->setSettingValue<bool>("render-gate", false);
