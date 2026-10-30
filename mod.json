@@ -312,5 +312,14 @@
 			"default": 200,
 			"enable-if": "show-overlay"
 		}
+	},
+	"resources": {
+		"sprites": [
+			"icon-button.png",
+			"logo-128.png",
+			"reborn-button.png",
+			"reborn-button-selected.png",
+			"reborn-card.png"
+		]
 	}
 }

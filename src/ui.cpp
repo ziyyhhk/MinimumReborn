@@ -302,7 +302,7 @@ namespace {
         // Header, tabs, footer
         // -----------------------------------------------------------------------------
         void buildHeader() {
-            auto* logo = CCSprite::create("logo-128.png");
+            auto* logo = CCSprite::create("logo.png");
             if (logo) {
                 float const h = logo->getContentSize().height;
                 logo->setScale(h > 0.f ? 42.f / h : 1.f);
@@ -989,7 +989,7 @@ class $modify(RebornPauseLayer, PauseLayer) {
             holder->addChild(bg);
         }
 
-        if (auto* icon = CCSprite::create("icon-button.png")) {
+        if (auto* icon = CCSprite::create("logo.png")) {
             float const h = icon->getContentSize().height;
             icon->setScale(h > 0.f ? 34.f / h : 1.f);
             icon->setPosition({width / 2.f, width / 2.f});
