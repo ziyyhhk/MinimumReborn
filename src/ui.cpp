@@ -328,6 +328,7 @@ namespace {
 
     // One panel at a time. Defined before the class because init() registers itself
     // and onExit() clears the entry.
+    class RebornPopup;
     RebornPopup* g_openPanel = nullptr;
 
     class RebornPopup : public Popup {
