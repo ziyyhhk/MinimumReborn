@@ -396,21 +396,15 @@ namespace {
             // assumed because that parenting differs between Geode versions.
             auto* director = CCDirector::get();
             if (director && m_mainLayer) {
-                float const available = director->getVisibleSize().width;
-                float const wanted = kPopupWidth + 24.f;
-                if (available > 1.f && available < wanted) {
-                    float const fit = available / wanted;
+                CCSize const visible = director->getVisibleSize();
+                float const fitW = visible.width > 1.f ? (visible.width - 24.f) / kPopupWidth : 1.f;
+                float const fitH = visible.height > 1.f ? (visible.height - 24.f) / kPopupHeight : 1.f;
+                float const fit = std::min({1.f, fitW, fitH});
+                if (fit > 0.01f && fit < 1.f) {
+                    // Only the content layer is scaled. The frame and the close button live
+                    // inside it in this Popup implementation, and scaling them from the
+                    // outside would double-scale anything that happens to be a grandchild.
                     m_mainLayer->setScale(fit);
-                    if (m_bgSprite && m_bgSprite->getParent() != m_mainLayer) {
-                        m_bgSprite->setScale(fit);
-                        CCPoint const p = m_bgSprite->getPosition();
-                        m_bgSprite->setPosition({p.x * fit, p.y * fit});
-                    }
-                    if (m_closeBtn && m_closeBtn->getParent() != m_mainLayer) {
-                        m_closeBtn->setScale(fit);
-                        CCPoint const p = m_closeBtn->getPosition();
-                        m_closeBtn->setPosition({p.x * fit, p.y * fit});
-                    }
                 }
             }
 
@@ -713,8 +707,10 @@ namespace {
             auto ref = this->pillAt(x, rowY(row), width, " ",
                                     std::function<void()>(), 0.34f);
             m_cycles.push_back({ref.label, kind, std::move(key), prefix, width});
-            // pillAt registered the empty action above; this row's action is the cycle step.
-            m_actions.back() = this->makeCycleAction(kind, key);
+            // The key was moved into the row above, so the action reads it back from there.
+            // Passing the moved-from string produced an empty setting name, which silently
+            // made the particle and editor cull-mode rows write nothing at all.
+            m_actions.back() = this->makeCycleAction(kind, m_cycles.back().key);
         }
 
         void buildOverview() {
@@ -771,7 +767,9 @@ namespace {
             // in one frame, further systems get a 4-particle pool instead of a full buffer.
             cycleRow(2, "Spawn budget", CycleKind::SpawnBudget, "spawn-budget", 220.f, 60.f);
 
-            headingRow(3, "PER SECOND / PER SESSION");
+            // The mode cycles above only take effect while this switch is on, and it had no
+            // control anywhere in the panel.
+            this->toggleRow(3, "cull-offscreen-particles", "Off-screen particle culling");
             statRow(4, "Sprites / particles", "cull-rate");
             statRow(5, "Batches (session)", "batches");
             noteRow(6, "Draw-only. Simulation, physics, collisions and triggers are untouched.");
@@ -810,7 +808,7 @@ namespace {
             this->toggleRow(0, "show-overlay", "Performance overlay");
             cycleRow(1, "Overlay detail", CycleKind::Detail, "overlay-detail");
             cycleRow(2, "Overlay corner", CycleKind::Corner, "overlay-corner");
-            headingRow(3, "DIAGNOSTICS - MEASURED, NOT ESTIMATED");
+            statRow(3, "Last benchmark", "benchmark");
             statRow(4, "Frame", "diag-frame");
             statRow(5, "Spikes / draw cost", "diag-spikes");
             auto bench = this->pillAt(0.f, rowY(6), 200.f, "Benchmark",
@@ -853,6 +851,13 @@ namespace {
                                            : current == "Above Normal" ? "High" : "Normal";
                     mod->setSettingValue<std::string>("process-priority", next);
                 }
+                else if (kind == CycleKind::SpawnBudget) {
+                    int64_t const current = mod->getSettingValue<int64_t>(key);
+                    int64_t const next = current == 0 ? 8 : current < 8 ? 8
+                                           : current < 16 ? 16 : current < 32 ? 32 : 0;
+                    mod->setSettingValue<int64_t>(key, next);
+                    this->markCustom();
+                }
                 else if (kind == CycleKind::ParticleCap) {
                     int64_t const current = mod->getSettingValue<int64_t>("particle-cap");
                     int64_t next = 512;
@@ -891,8 +896,19 @@ namespace {
             bool const next = !mod->getSettingValue<bool>(key);
             // These four are diagnostics or per-user preferences that no profile owns, so
             // changing them must not silently rewrite the profile to Custom.
-            if (key != "show-overlay" && key != "no-input-delay" && key != "editor-culling"
-                && key != "timer-resolution" && key != "adaptive-cap" && key != "low-latency") {
+            static char const* const kProfileNeutral[] = {
+                "show-overlay", "no-input-delay", "editor-culling", "timer-resolution",
+                "adaptive-cap", "low-latency", "enabled", "render-gate",
+                "background-throttle", "cull-offscreen-particles",
+            };
+            bool neutral = false;
+            for (auto const* name : kProfileNeutral) {
+                if (key == name) {
+                    neutral = true;
+                    break;
+                }
+            }
+            if (!neutral) {
                 this->markCustom();
             }
             mod->setSettingValue<bool>(key, next);
@@ -918,10 +934,12 @@ namespace {
                 "Restore every setting to the <cy>Balanced</c> defaults?\n"
                 "The current profile and all toggles will be replaced.",
                 "Cancel", "Reset",
-                [this](FLAlertLayer*, bool confirmed) {
+                // RefPtr keeps the panel alive until the alert is answered; a raw this would
+                // dangle if the popup were closed while the confirmation was still up.
+                [self = cocos2d::RefPtr<RebornPopup>(this)](FLAlertLayer*, bool confirmed) {
                     if (!confirmed) return;
                     reborn::resetToDefaults();
-                    this->refreshPage();
+                    if (self) self->refreshPage();
                 }
             );
         }
@@ -1065,6 +1083,12 @@ namespace {
                               u64(counters.editorParticleDrawsSkipped),
                               u64(counters.editorParticlesExamined));
             }
+            else if (id == "benchmark") {
+                // Produced by the same recorder that writes the log line, so the panel cannot
+                // show a number the measurement never took.
+                char const* summary = reborn::benchmarkSummary();
+                return summary && summary[0] ? std::string(summary) : std::string("no run yet");
+            }
             else if (id == "diag-frame") {
                 std::snprintf(text, sizeof(text), "%u FPS   avg %.1f   p95 %.1f   worst %.1f ms",
                               fps, stats.averageFrameMs(120), stats.percentileFrameMs(120, 0.95),
@@ -1110,11 +1134,22 @@ namespace {
     // -----------------------------------------------------------------------------
     // Entry point button
     //
-    // Installed on the gameplay pause layer *and* the editor pause layer, because the
-    // editor counters on the Editor page can only be read while the editor is the active
-    // scene. Same badge, same position, same panel.
+    // Installed on the gameplay pause layer only. An editor pause layer version shipped in
+    // v1.4.1 and was reverted in v1.4.2, because opening that menu crashed on the test
+    // machine and the mod has no reason to sit in that call chain. The consequence is that
+    // the Editor page counters are read from a level pause menu, not inside the editor.
     // -----------------------------------------------------------------------------
     void openRebornPanel() {
+        // Opening twice would give two popups, two live schedules and two sets of controls
+        // writing the same settings, so an existing panel is found and left alone.
+        auto* scene = CCDirector::get() ? CCDirector::get()->getRunningScene() : nullptr;
+        if (scene) {
+            bool already = false;
+            scene->recurse([&already](Node* node) {
+                if (!already && node->getID() == "minimum-reborn-popup"_spr) already = true;
+            });
+            if (already) return;
+        }
         if (auto* popup = RebornPopup::create()) {
             popup->show();
         }
@@ -1153,8 +1188,14 @@ namespace {
         // Just past the native pause row (which ends around +158 design units from centre)
         // rather than in a corner: Eclipse's draggable menu button can occupy any corner, so
         // the row is the one place it does not cover.
-        auto const win = CCDirector::get()->getWinSize();
-        button->setPosition({win.width / 2.f + 205.f, win.height / 2.f - 11.f});
+        auto* director = CCDirector::get();
+        auto const win = director->getWinSize();
+        auto const visible = director->getVisibleSize();
+        // The row sits just past the native pause buttons, but on a narrow window that lands
+        // outside the screen, so it is clamped back inside the visible rect.
+        float const x = std::min(win.width / 2.f + 205.f, visible.width - 30.f);
+        float const y = std::max(win.height / 2.f - 11.f, 30.f);
+        button->setPosition({x, y});
         menu->setTouchPriority(-600);
         layer->addChild(menu, 100);
     }
