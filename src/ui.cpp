@@ -199,8 +199,8 @@ namespace {
     // block stops short of it.
     constexpr float kProfileRightX = kPopupWidth / 2.f - kMargin - 26.f;
 
-    CCColor3B const kTextPrimary = ccc3(242, 244, 248);
-    CCColor3B const kTextMuted = ccc3(176, 186, 204);
+    ccColor3B const kTextPrimary = ccc3(242, 244, 248);
+    ccColor3B const kTextMuted = ccc3(176, 186, 204);
 
     void fitLabel(CCLabelBMFont* label, float maxScale, float room) {
         float const natural = label->getContentSize().width;
@@ -233,7 +233,7 @@ namespace {
     char const* const kNineSliceFile = "square02b_001.png";
 
     float textureSide(char const* file, float fallback) {
-        auto* cache = CCDirector::get() ? CCDirector::get()->getTextureCache() : nullptr;
+        auto* cache = CCTextureCache::sharedTextureCache();
         if (!cache) return fallback;
         auto* tex = cache->addImage(file);
         if (!tex) return fallback;
@@ -364,7 +364,7 @@ namespace {
 
         CCLabelBMFont* addLabel(
             CCNode* parent, std::string const& text, char const* font, float scale,
-            CCColor3B color, std::uint8_t opacity, float x, float y, int align
+            ccColor3B color, std::uint8_t opacity, float x, float y, int align
         ) {
             auto* label = CCLabelBMFont::create(text.c_str(), font);
             if (!label) return nullptr;
@@ -547,9 +547,10 @@ namespace {
         }
 
         void noteRow(int row, std::string const& text, float scale = 0.3f, std::uint8_t opacity = 165) {
-            auto* label = addLabel(m_pageRoot, text, "chatFont.fnt", scale, kTextMuted, opacity,
-                                   kLeft + 2.f, rowY(row), 1);
-            if (label) label->setLimitWidth(kContentWidth - 4.f);
+            // CCLabelBMFont has no wrap width in this binding, so notes are written to fit:
+            // at 0.3 chatFont a line of this length is roughly half the content width.
+            addLabel(m_pageRoot, text, "chatFont.fnt", scale, kTextMuted, opacity,
+                     kLeft + 2.f, rowY(row), 1);
         }
 
         void statRow(int row, char const* label, char const* metric) {

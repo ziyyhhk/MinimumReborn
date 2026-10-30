@@ -1,5 +1,41 @@
 # Changelog
 
+## v1.4.0 (2026-10-30)
+
+Phase 5: the control panel rebuilt on one layout system, and an honest account of what the
+draw path actually skips.
+
+* **One spacing system.** The panel is laid out from a single set of constants (margin,
+  header, nav, row pitch, footer). Header, tabs, content rows and footer share the same
+  left/right edges and baselines instead of each control carrying its own coordinate.
+* **Header**: the MK icon at 26 px, the title, a "Performance and rendering" subtitle, the
+  active profile and GD's own close button. The profile block stops short of the close
+  button, which is why the previous build clipped it.
+* **Navigation**: six equal-width tabs with no background plates. The selected tab is
+  brighter, slightly larger and carries a green accent bar on the shared baseline, so the
+  selected state is obvious without the blue rectangle that made one tab look like a
+  different widget from the other five.
+* **Controls**: consistent pill buttons (same height, same cap insets), native togglers with
+  their label on the same baseline, and full-width cycle buttons that step the real setting.
+* **Diagnostics page** is now a labelled table: `Frame`, `CPU draw time`, `State`, per-second
+  culling rates, each with its own value column and unit. Values with no samples answer `--`.
+* **Nine-slice fix**: cap insets are read from the texture the engine actually loads instead
+  of being hard-coded. A hard-coded inset produced a stretched right edge and a thin bar
+  sticking out of every pill, because the texture size at runtime is not the size the source
+  file suggests.
+* **Popup background** stays on GD's own popup frame. Geode's default (`GJ_square01.png`)
+  turned out to be the brown level-info panel, which is why the previous build looked like a
+  different UI language.
+* **Hot-path counters**: the draw hooks no longer perform a locked atomic increment per
+  sprite. They accumulate into plain integers and publish once per frame, so the cost of
+  measuring the optimization does not scale with the object count.
+* **Squared visibility test**: the sprite cull compares squared distance against squared
+  radius, removing a `hypot` from the hottest path in the mod.
+* **Particle fast-out** for zero opacity and zero scale, counted separately from the idle and
+  off-screen skips.
+* **Rendering page** now exposes the adaptive particle cap toggle that already existed in the
+  settings but had no control in the panel.
+
 ## v1.2.1 (2026-10-30)
 
 Phase 3: first in-game test, and the changes the measurements forced.
