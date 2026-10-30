@@ -184,7 +184,7 @@ namespace {
     constexpr float kPopupWidth = 500.f;
     constexpr float kPopupHeight = 320.f;
     constexpr float kPageWidth = 480.f;
-    constexpr float kPageHeight = 216.f;
+    constexpr float kPageHeight = 208.f;
     constexpr float kButtonHeight = 23.f;
 
     void fitLabel(CCLabelBMFont* label, float maxScale, float room) {
@@ -212,7 +212,7 @@ namespace {
     // real rounded nine-slice and tints correctly, so a missing resource can never leave a
     // control without a visible hit area.
     CCScale9Sprite* makeCard(float width, float height) {
-        auto* card = CCScale9Sprite::create("reborn-card.png", {0.f, 0.f, 96.f, 96.f}, {24.f, 24.f, 24.f, 24.f});
+        auto* card = CCScale9Sprite::create("reborn-card.png"_spr, {0.f, 0.f, 96.f, 96.f}, {24.f, 24.f, 24.f, 24.f});
         if (!card) card = CCScale9Sprite::create("square02b_001.png", {0.f, 0.f, 80.f, 80.f});
         if (!card) return nullptr;
         card->setContentSize({width, height});
@@ -223,7 +223,7 @@ namespace {
 
     CCScale9Sprite* makeButtonBackground(float width, float height, bool selected) {
         auto* bg = CCScale9Sprite::create(
-            selected ? "reborn-button-selected.png" : "reborn-button.png",
+            selected ? "reborn-button-selected.png"_spr : "reborn-button.png"_spr,
             {0.f, 0.f, 64.f, 64.f}, {20.f, 20.f, 20.f, 20.f}
         );
         if (!bg) bg = CCScale9Sprite::create("square02b_001.png", {0.f, 0.f, 80.f, 80.f});
@@ -297,6 +297,13 @@ namespace {
             if (!Popup::init(kPopupWidth, kPopupHeight, "square01_001.png")) return false;
             this->setID("minimum-reborn-popup"_spr);
 
+            if (auto* panel = makeCard(kPopupWidth, kPopupHeight)) {
+                panel->setColor(ccc3(15, 18, 30));
+                panel->setOpacity(248);
+                panel->setPosition({kPopupWidth / 2.f, kPopupHeight / 2.f});
+                m_mainLayer->addChild(panel, -1);
+            }
+
             this->buildHeader();
             this->buildTabs();
             this->buildFooter();
@@ -310,8 +317,7 @@ namespace {
         // Header, tabs, footer
         // -----------------------------------------------------------------------------
         void buildHeader() {
-            auto* logo = CCSprite::create("logo-128.png");
-            if (!logo) logo = CCSprite::create("logo.png");
+            auto* logo = CCSprite::create("logo-128.png"_spr);
             if (logo) {
                 float const h = logo->getContentSize().height;
                 logo->setScale(h > 0.f ? 42.f / h : 1.f);
@@ -395,7 +401,7 @@ namespace {
             }
             auto* item = CCMenuItemSpriteExtra::create(holder, this, selector);
             m_footerMenu->addChild(item);
-            item->setPosition({x, -145.f});
+            item->setPosition({x, -140.f});
         }
 
         void onTab(CCObject* sender) {
@@ -440,7 +446,7 @@ namespace {
             m_pageRoot = CCNode::create();
             m_pageRoot->setContentSize({kPageWidth, kPageHeight});
             m_pageRoot->setAnchorPoint({0.5f, 0.5f});
-            m_mainLayer->addChildAtPosition(m_pageRoot, Anchor::Center, ccp(0.f, -18.f));
+            m_mainLayer->addChildAtPosition(m_pageRoot, Anchor::Center, ccp(0.f, -20.f));
 
             if (auto* card = makeCard(kPageWidth, kPageHeight)) {
                 card->setPosition({kPageWidth / 2.f, kPageHeight / 2.f});
@@ -992,7 +998,7 @@ class $modify(RebornPauseLayer, PauseLayer) {
         holder->setContentSize({width, width});
 
         auto* bg = CCScale9Sprite::create(
-            "reborn-button.png", {0.f, 0.f, 64.f, 64.f}, {20.f, 20.f, 20.f, 20.f}
+            "reborn-button.png"_spr, {0.f, 0.f, 64.f, 64.f}, {20.f, 20.f, 20.f, 20.f}
         );
         if (!bg) bg = CCScale9Sprite::create("square02b_001.png", {0.f, 0.f, 80.f, 80.f});
         if (bg) {
@@ -1003,7 +1009,7 @@ class $modify(RebornPauseLayer, PauseLayer) {
             holder->addChild(bg);
         }
 
-        if (auto* icon = CCSprite::create("logo-128.png")) {
+        if (auto* icon = CCSprite::create("logo-128.png"_spr)) {
             float const h = icon->getContentSize().height;
             icon->setScale(h > 0.f ? 34.f / h : 1.f);
             icon->setPosition({width / 2.f, width / 2.f});
