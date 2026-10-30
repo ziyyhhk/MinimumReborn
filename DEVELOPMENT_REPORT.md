@@ -389,3 +389,89 @@ benchmark only when not paused), `src/config.cpp` (Balanced scene cull off, rese
 `src/ui.cpp` (panel height/layout), `src/config.hpp` (batch counters), `mod.json` (version,
 defaults, corrected descriptions), `CMakeLists.txt` (version), `README.md`, `CHANGELOG.md`,
 this report.
+
+
+---
+
+# Phase 5 (v1.3.0 - v1.4.0): UI rebuild, draw-path accounting, measured A/B
+
+## 25. What was wrong with the panel, in the order it was found
+
+1. **Custom nine-slice assets were unusable.** The Geode packer downscales `resources/*.png`
+   to a 1x base and generates `-hd`/`-uhd` variants, so hard-coded source rects and cap insets
+   on mod-made sprites pointed at the wrong pixels. Those assets were deleted.
+2. **The content card was about 55% transparent.** A dark navy sprite at alpha 190 multiplied
+   by `setOpacity(190)` produced a see-through panel over the game. The card was removed.
+3. **Geode's default popup background is brown.** `Popup::init` defaults to
+   `GJ_square01.png`, the level-info brown panel; passing it produced the reported "ugly brown
+   background". The panel now uses GD's own popup frame (`square01_001.png`).
+4. **Trimmed atlas frames stretch badly.** Stretching `square02b_001.png` into a 20-unit row
+   dragged its trimmed transparent margin into a sliver at one end of every pill; a
+   `CCScale9Sprite` with hard-coded insets produced a rounded left end and a square right end.
+5. **`CCLayerColor` does not follow the anchor point here,** and
+   `setIgnoreAnchorPointForPosition` is not exposed in this binding. Pills rendered as ~90-unit
+   squares offset from their row and the nav rule landed on the wrong side of the panel. That
+   build is the "bug" screenshot.
+6. **Menu items and layer children live in different coordinate spaces.** `m_mainLayer` has its
+   origin in the panel's bottom-left corner while each `CCMenu` sits at the centre, so labels
+   nested inside a menu item's holder were shifted by half the panel. The panel-centre offset is
+   now applied only in the layer-placement helpers.
+
+Resolution: every flat shape is a 16x16 solid white PNG owned by the mod (`makeRect`), scaled
+and tinted, and every control is composed from it. Rounded corners were given up deliberately;
+nothing depends on an atlas frame's internal layout any more.
+
+## 26. Layout system
+
+`kPopupWidth/kPopupHeight` 400x240, `kMargin` 18, `kHeaderH` 34, `kNavH` 26, `kFooterH` 28,
+`kRowPitch` 21, `kButtonHeight` 20, `kGap` 5, `kContentWidth = width - 2*margin`,
+`kTabWidth = kContentWidth / 6`. Rows are addressed by index (`rowY(i)`), so a page reads as a
+list of rows and shares margins and baselines with every other page. Tabs have no background
+plates; the selected tab is brighter, scaled from 0.33 to 0.35, and carries a 2-unit green
+accent bar on the shared baseline. Stat rows are label-left / value-right pairs, which is what
+made the diagnostics page readable.
+
+## 27. Live measurement, quoted from the Geode log
+
+    19:47:04 benchmark renderer optimized, scene off, particles con - 610 drawn frames in
+      10.0 s, avg 16.67 ms (p50 16.33, p95 17.36), 1% low 25 fps, variability 1.03 ms,
+      draw 2.42 ms | scene culled 0/0 | particles skipped 0/610 | invisible sprites 1830 |
+      batches 32330 (364757 quads)
+    19:47:31 benchmark renderer engine, scene off, particles con - 601 drawn frames in
+      10.0 s, avg 16.67 ms (p50 16.33, p95 17.35), 1% low 53 fps, variability 1.02 ms,
+      draw 2.35 ms | scene culled 0/0 | particles skipped 0/0 | invisible sprites 0 |
+      batches 0 (0 quads)
+
+Read plainly: at the 60 FPS cap in Stereo Madness the optimized path does not raise the frame
+rate, and it costs +0.07 ms of CPU time per frame inside `drawScene` while removing 1,830
+zero-pixel draw submissions per 10 s. The 1% low is worse in the optimized run; one 10 s
+sample cannot explain that, so it is reported instead of smoothed over. No claim of "faster"
+is made anywhere in the mod, the panel or these docs.
+
+## 28. Instrumentation overhead removed
+
+`++atomic` per sprite became an integer increment per sprite plus one publish pass per frame
+(`renderFrameEnd()`), and the sprite visibility test compares squared distance against squared
+radius instead of calling `hypot` per sprite. Both changes remove work inside the hottest path
+in the mod rather than moving it somewhere else.
+
+## 29. Honest limits after phase 5
+
+* Windows only: `mod.json` declares `win`, CI builds Windows, and no Android/iOS binary was
+  produced or tested. Windows-specific settings are guarded in code and hidden in the panel on
+  other platforms, but that is a compile-time statement, not mobile support.
+* No GPU timer. `draw ms` is CPU time inside `CCDirector::drawScene`.
+* No uncapped or long-session measurement, and no particle-heavy or glow-heavy level test, so
+  the cases where culling should pay off most are still unmeasured.
+* Non-zero scene and particle cull counts have still not been captured in a live level.
+* The game exits observed during testing were clean shutdowns (settings saved, logger shut
+  down, no crash log, no Geode crash-handler output). They were not traced to this mod and are
+  recorded as unexplained rather than as fixed.
+
+## 30. Files touched in phase 5
+
+`src/ui.cpp` (layout constants, `makeRect`/`Pill`, header, nav, six pages, metric rows),
+`src/rendering.cpp` (hot counters, squared radius test, particle zero fast-out, shader-work
+documentation), `src/rendering.hpp` (`renderFrameEnd`), `src/frame_gate.cpp` (publish once per
+frame), `src/config.hpp` (`invisibleParticleDrawsSkipped`), `resources/reborn-pixel.png` (new),
+`mod.json` + `CMakeLists.txt` (version), `CHANGELOG.md`, `README.md`, this report.

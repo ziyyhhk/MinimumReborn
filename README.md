@@ -4,10 +4,12 @@ A rendering-focused optimization mod for Geometry Dash 2.2081, built with C++20 
 Geode SDK. It is a successor to [Minimum](https://github.com/ziyyhhk/Minimum), with the
 render path as the main subject rather than a settings collection.
 
-**Status: v1.2.1, built by GitHub Actions and run in Geometry Dash on a Windows laptop.**
-The runtime evidence in this README comes from that machine, not from estimates. It also
-changed the design: GD batches its level objects, so the per-sprite scene cull cannot see
-them. Scene culling is now opt-in and off in the default profile, and this file says so.
+**Status: v1.4.0, built by GitHub Actions and run in Geometry Dash on a Windows laptop.**
+The runtime evidence in this README and in `DEVELOPMENT_REPORT.md` comes from that machine,
+not from estimates. It also changed the design: GD batches its level objects, so the
+per-sprite scene cull cannot see them. Scene culling is opt-in and off in the default
+profile, and this file says so. See section 9 for the measured Engine vs Optimized A/B and
+for what the draw path actually avoids.
 
 ## What it does
 
@@ -291,3 +293,79 @@ Runtime evidence (this laptop, details and numbers above):
 MIT. Original code by ziyyhhk. Minimum (MIT) was used as a behavioral reference for the
 particle techniques and the render-gate scheduling approach, both reimplemented for this
 project. No GPL code from Bismuth is included.
+
+
+## 9. v1.4.0 - the control panel rebuilt, and what the draw path really saves
+
+### Layout
+
+The panel is 400x240 design units inside GD's own popup frame and is laid out from one set of
+constants: `kMargin`, `kHeaderH`, `kNavH`, `kFooterH`, `kRowPitch`, `kButtonHeight`. Header,
+tabs, content rows and footer all derive their positions from those, so nothing is placed with
+an unrelated hard-coded coordinate. Six tabs share the content width equally; the selected tab
+is brighter, one step larger and carries a green accent bar on the shared baseline.
+
+Controls are drawn from a 16x16 solid white PNG the mod owns (`resources/reborn-pixel.png`),
+scaled to the row size and tinted. Three alternatives were tried and are now documented as
+rejected because they were screenshotted failing:
+
+* stretching GD's `square02b_001.png` into a 20-unit row drags its trimmed atlas margin into
+  a sliver at one end of every pill;
+* a `CCScale9Sprite` with hard-coded cap insets samples the wrong sub-rect of the trimmed
+  frame, producing a rounded left end and a square right end;
+* `CCLayerColor` builds its quad from the layer position in a way that does not follow the
+  anchor point here, so bars and bodies landed mirrored away from where they were placed
+  (and `setIgnoreAnchorPointForPosition` is not in this binding at all).
+
+### Measured A/B, same level, same machine, 10 s each, 60 FPS cap
+
+Stereo Madness, recorded with the panel's own benchmark button (the log lines are quoted
+verbatim in `DEVELOPMENT_REPORT.md`):
+
+| | drawn frames | avg frame | p95 | draw ms (CPU) | variability | invisible sprite draws skipped |
+|---|---|---|---|---|---|---|
+| Optimized | 610 in 10.0 s | 16.67 ms | 17.36 ms | 2.42 ms | 1.03 ms | 1,830 |
+| Engine | 601 in 10.0 s | 16.67 ms | 17.35 ms | 2.35 ms | 1.02 ms | 0 |
+
+What that does and does not say:
+
+* The frame rate is identical because the game is capped at 60 FPS in this level; no FPS gain
+  is claimed and none was measured.
+* The optimized path costs **+0.07 ms of CPU time inside `drawScene` per frame** (about 0.4%
+  of a 16.7 ms frame) while removing 1,830 zero-pixel draw submissions per 10 s. That is the
+  honest size of the optimization's own overhead, measured rather than assumed.
+* The 1% low came out worse in the optimized run (25 vs 53 fps). One 10 s run is not enough to
+  attribute that; it is reported as-is, and it is the reason no "smoother" claim is made.
+* Scene culling culled 0 sprites and particle culling 0 systems in this level, consistent with
+  the batching finding: the per-node path only sees unbatched sprites.
+
+### Shader-related work
+
+The skips return before `CCSprite::draw` / `CCParticleSystemQuad::draw`, which is where
+cocos2d activates the `CCGLProgram`, sets the vertex attribute pointers, binds the texture and
+issues the draw. So the work actually avoided per skipped node is program activation and
+uniform setup, the attribute pointers, the texture bind, the draw call, and the fragment work
+those triangles would have produced. That is the defensible reading of "avoid shader setup for
+objects that will not be rendered".
+
+What is deliberately not claimed: no shader is compiled, replaced or cached; no draw is
+reordered, merged or re-batched; no individual quad is dropped out of a
+`CCSpriteBatchNode` (its buffer is rebuilt only for dirty children, so a mod that rewrote it
+would corrupt the next frame); and nothing is culled on its center alone. Batched level
+objects therefore stay untouched, and the panel says so.
+
+### Overhead of the instrumentation itself
+
+The draw hooks used to perform a locked atomic increment per object. In a level with tens of
+thousands of sprite draws per frame that made the counters one of the more expensive things in
+the path, so they now accumulate into plain integers and are published once per frame by
+`renderFrameEnd()`. The sprite visibility test also dropped a `hypot` per sprite by comparing
+squared distance against squared radius.
+
+### Platform
+
+Windows only. `mod.json` declares `"gd": {"win": "2.2081"}` and CI builds Windows. The
+Windows-specific features (1 ms timer resolution, background draw throttle, process priority,
+render gate) sit behind `GEODE_IS_WINDOWS` in the source and are hidden in the panel on other
+platforms, so the rest of the mod is written to compile elsewhere - but no Android or iOS
+binary has been built or run here, so this package does not claim mobile support.
