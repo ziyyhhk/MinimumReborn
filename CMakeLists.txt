@@ -4,13 +4,14 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 
-project(MinimumReborn VERSION 1.0.0)
+project(MinimumReborn VERSION 1.1.0)
 
 add_library(${PROJECT_NAME} SHARED
     src/main.cpp
     src/config.cpp
     src/rendering.cpp
     src/frame_gate.cpp
+    src/benchmark.cpp
     src/system_tuning.cpp
     src/ui.cpp
 )

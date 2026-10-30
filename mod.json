@@ -223,6 +223,14 @@
 			"type": "bool",
 			"default": true
 		},
+		"benchmark-seconds": {
+			"name": "Benchmark Duration",
+			"description": "Length of the benchmark started from the pause menu. Only drawn frames in a level are recorded, and the result reports average, p50/p95 frame time, 1% low and how many draws the culling removed. Logged to the Geode log as well.",
+			"type": "int",
+			"min": 3,
+			"max": 60,
+			"default": 10
+		},
 		"overlay-detail": {
 			"name": "Overlay Detail",
 			"description": "Compact shows FPS, average frame time and 1% low. Detailed adds frame-time p95, logic rate, draw CPU time, the bottleneck hint and the skipped-draw counters. 'draw ms' is CPU time inside the draw hook, not GPU time.",

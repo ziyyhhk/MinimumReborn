@@ -171,27 +171,28 @@ namespace {
         CCNode* parent = sprite->getParent();
         if (!parent) return false;
 
-        CCRect const box = sprite->getBoundingBox();
-        if (!(box.size.width > 0.f) || !(box.size.height > 0.f)) return false;
-        if (!isFinite(box.origin.x) || !isFinite(box.origin.y)) return false;
+        // The sprite's quad is contentSize * scale, placed relative to its anchor point. The
+        // anchor is not queried (the binding differs between engines), so the radius covers
+        // the whole diagonal measured from the node position: correct for any anchor, any
+        // rotation and any scale, at the cost of keeping a few sprites that a tighter bound
+        // would reject.
+        CCSize const size = sprite->getContentSize();
+        if (!(size.width > 0.f) || !(size.height > 0.f)) return false;
+
+        double const scale = std::max(
+            std::fabs(static_cast<double>(sprite->getScaleX())),
+            std::fabs(static_cast<double>(sprite->getScaleY()))
+        );
+        double const radius = std::hypot(size.width, size.height) * scale;
+        if (!std::isfinite(radius)) return false;
 
         Basis basis;
         if (!basisOf(parent, basis)) return false;
 
-        // Rotation is about the anchor point (= the node position), so the farthest corner
-        // of the unrotated box gives a rotation-invariant radius.
-        CCPoint const anchor = sprite->getPosition();
-        double const dx = std::max(std::fabs(static_cast<double>(box.origin.x) - anchor.x),
-                                   std::fabs(static_cast<double>(box.origin.x + box.size.width) - anchor.x));
-        double const dy = std::max(std::fabs(static_cast<double>(box.origin.y) - anchor.y),
-                                   std::fabs(static_cast<double>(box.origin.y + box.size.height) - anchor.y));
-        double const radius = std::sqrt(dx * dx + dy * dy) * basisScale(basis);
-        if (!std::isfinite(radius)) return false;
-
-        CCPoint const center = toWorld(basis, anchor);
+        CCPoint const center = toWorld(basis, sprite->getPosition());
         if (!isFinite(center.x) || !isFinite(center.y)) return false;
 
-        return !circleTouches(center.x, center.y, radius, margin);
+        return !circleTouches(center.x, center.y, radius * basisScale(basis), margin);
     }
 
     struct Bounds {
@@ -319,7 +320,7 @@ namespace reborn {
         auto const& cfg = config();
         return cfg.enabled && cfg.rendererOptimized
             && (cfg.sceneCull != CullMode::Off
-                || (cfg.cullOffscreenParticles && cfg.particleCull != CullMode::Off));
+                || (cfg.cullOffscreenParticles && cfg.particleCull != reborn::CullMode::Off));
     }
 }
 
@@ -341,7 +342,7 @@ struct SpriteDrawFastPath : Modify<SpriteDrawFastPath, CCSprite> {
                     return;
                 }
             }
-            if (cfg.sceneCull != CullMode::Off) {
+            if (cfg.sceneCull != reborn::CullMode::Off) {
                 ++reborn::counters().sceneSpritesExamined;
                 if (spriteOffScreen(this, cfg.sceneCullMargin)) {
                     ++reborn::counters().sceneSpriteDrawsSkipped;
@@ -373,7 +374,7 @@ struct ParticleDrawFastPath : Modify<ParticleDrawFastPath, CCParticleSystemQuad>
                 ++reborn::counters().idleParticleDrawsSkipped;
                 return;
             }
-            if (cfg.cullOffscreenParticles && cfg.particleCull != CullMode::Off && m_uParticleCount > 0) {
+            if (cfg.cullOffscreenParticles && cfg.particleCull != reborn::CullMode::Off && m_uParticleCount > 0) {
                 ++reborn::counters().particleSystemsExamined;
                 if (particleOffScreen(this, cfg.particleCullMargin)) {
                     ++reborn::counters().offscreenParticleDrawsSkipped;

@@ -4,9 +4,11 @@
 #include <Geode/ui/OverlayManager.hpp>
 #include <Geode/ui/Popup.hpp>
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <string>
 #include <vector>
+#include "benchmark.hpp"
 #include "config.hpp"
 #include "frame_stats.hpp"
 #include "hud.hpp"
@@ -335,13 +337,19 @@ namespace {
                 auto* sprite = ButtonSprite::create("Reset", "goldFont.fnt", "GJ_button_05.png", 0.7f);
                 sprite->setScale(0.8f);
                 auto* button = CCMenuItemSpriteExtra::create(sprite, this, menu_selector(RebornPopup::onReset));
-                m_buttonMenu->addChildAtPosition(button, Anchor::Center, ccp(-96.f, buttonY));
+                m_buttonMenu->addChildAtPosition(button, Anchor::Center, ccp(-128.f, buttonY));
+            }
+            {
+                auto* sprite = ButtonSprite::create("Bench", "goldFont.fnt", "GJ_button_02.png", 0.7f);
+                sprite->setScale(0.8f);
+                auto* button = CCMenuItemSpriteExtra::create(sprite, this, menu_selector(RebornPopup::onBench));
+                m_buttonMenu->addChildAtPosition(button, Anchor::Center, ccp(0.f, buttonY));
             }
             {
                 auto* sprite = ButtonSprite::create("All Settings", "goldFont.fnt", "GJ_button_01.png", 0.7f);
                 sprite->setScale(0.8f);
                 auto* button = CCMenuItemSpriteExtra::create(sprite, this, menu_selector(RebornPopup::onAllSettings));
-                m_buttonMenu->addChildAtPosition(button, Anchor::Center, ccp(96.f, buttonY));
+                m_buttonMenu->addChildAtPosition(button, Anchor::Center, ccp(128.f, buttonY));
             }
             {
                 auto* info = CCLabelBMFont::create(
@@ -367,23 +375,52 @@ namespace {
             auto& counters = reborn::counters();
             auto& stats = reborn::frameStats();
             auto const& cfg = reborn::config();
-            char text[256];
+            char third[160] = "";
+            if (reborn::benchmarkActive()) {
+                int const percent = static_cast<int>(
+                    reborn::benchmarkProgress(std::chrono::steady_clock::now()) * 100.0
+                );
+                std::snprintf(third, sizeof(third), "benchmark running %d%%", percent);
+            }
+            else if (reborn::benchmarkLatest().valid) {
+                auto const& run = reborn::benchmarkLatest();
+                std::snprintf(
+                    third, sizeof(third), "bench %.0fs: %.0f fps | avg %.2f ms | p95 %.2f | 1%% low %.0f",
+                    run.seconds, run.avgFps, run.avgFrameMs, run.p95FrameMs, run.onePercentLowFps
+                );
+            }
+
+            char text[384];
             std::snprintf(
                 text, sizeof(text),
                 "%u FPS  |  avg %.1f ms  |  1%% low %.0f  |  logic %u/s\n"
-                "renderer %s  |  scene %s %u/s  |  particles %s %u/s",
+                "renderer %s  |  scene %s %u/s  |  particles %s %u/s%s%s",
                 counters.fps.load(std::memory_order_relaxed),
                 stats.averageFrameMs(120),
                 stats.onePercentLowFps(240),
                 counters.logicFps.load(std::memory_order_relaxed),
                 cfg.rendererOptimized ? "optimized" : "engine",
                 cullShort(cfg.sceneCull), counters.sceneCulledPerSec.load(std::memory_order_relaxed),
-                cullShort(cfg.particleCull), counters.particleSkipsPerSec.load(std::memory_order_relaxed)
+                cullShort(cfg.particleCull), counters.particleSkipsPerSec.load(std::memory_order_relaxed),
+                third[0] ? "\n" : "",
+                third
             );
             if (mLastLive != text) {
                 mLastLive = text;
                 mLive->setString(text);
             }
+        }
+
+        void onBench(CCObject*) {
+            if (reborn::benchmarkActive()) {
+                reborn::benchmarkStop(std::chrono::steady_clock::now());
+                return;
+            }
+            int64_t seconds = Mod::get()->getSettingValue<int64_t>("benchmark-seconds");
+            seconds = std::clamp<int64_t>(seconds, 3, 60);
+            reborn::benchmarkStart(
+                std::chrono::steady_clock::now(), static_cast<double>(seconds)
+            );
         }
 
         void syncModes() {

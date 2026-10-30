@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <chrono>
 #include "config.hpp"
+#include "benchmark.hpp"
 #include "frame_stats.hpp"
 #include "hud.hpp"
 #include "rendering.hpp"
@@ -238,6 +239,9 @@ struct RebornFrameGate : Modify<RebornFrameGate, CCDirector> {
             double const frameMs = std::chrono::duration<double, std::milli>(drawStart - s.lastDrawn).count();
             double const workMs = std::chrono::duration<double, std::milli>(drawEnd - drawStart).count();
             reborn::frameStats().push(std::min(frameMs, 1000.0), workMs);
+            // Feeds the in-game benchmark with the same number the overlay uses. No-op
+            // unless a run is active.
+            reborn::benchmarkNoteFrame(drawEnd, frameMs);
         }
         s.lastDrawn = drawStart;
 
