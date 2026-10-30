@@ -230,39 +230,28 @@ namespace {
     //     loads is not necessarily 80x80. Reading the size from the texture cache and taking
     //     a proportion of it keeps the corners intact; a fixed number produced a stretched
     //     right edge and a thin bar sticking out of every pill.
-    char const* const kNineSliceFile = "square02b_001.png";
+    char const* const kPillSprite = "square02b_001.png";
 
-    float textureSide(char const* file, float fallback) {
-        // A throwaway sprite reports the rect the texture actually loaded, which is the
-        // number the cap insets have to be measured against. Resolved once per session.
-        static float cached = 0.f;
-        if (cached > 1.f) return cached;
-        if (auto* probe = CCSprite::create(file)) {
-            float const side = probe->getContentSize().width;
-            if (side > 1.f) {
-                cached = side;
-                return side;
-            }
-        }
-        return fallback;
+    // Rounded control, drawn with GD's own square sprite.
+    //
+    // A nine-slice was tried first and produced a rounded left end with a square right end
+    // plus a thin bar sticking out of the pill: square02b_001.png reaches the engine as a
+    // trimmed atlas frame, so a rect/inset pair taken from the file's nominal size samples
+    // the wrong region. Setting the sprite's content size instead lets cocos stretch the
+    // frame it actually has. The corners stay rounded (slightly elliptical on a 20-unit
+    // tall row) and nothing depends on the texture's internal layout.
+    CCSprite* makePill(float width, float height, bool selected) {
+        auto* pill = CCSprite::create(kPillSprite);
+        if (!pill) return nullptr;
+        pill->setAnchorPoint({0.5f, 0.5f});
+        pill->setContentSize({width, height});
+        pill->setColor(selected ? ccc3(88, 132, 245) : ccc3(52, 60, 82));
+        pill->setOpacity(selected ? 255 : 225);
+        return pill;
     }
 
-    CCScale9Sprite* makeNineSlice(float width, float height, float capRatio, bool selected) {
-        char const* file = kNineSliceFile;
-        float const cap = std::min(capRatio * textureSide(file, 80.f), std::min(width, height) * 0.45f);
-        auto* bg = CCScale9Sprite::create(
-            file, {0.f, 0.f, textureSide(file, 80.f), textureSide(file, 80.f)}, {cap, cap, cap, cap}
-        );
-        if (!bg) return nullptr;
-        bg->setAnchorPoint({0.5f, 0.5f});
-        bg->setContentSize({width, height});
-        bg->setColor(selected ? ccc3(88, 132, 245) : ccc3(52, 60, 82));
-        bg->setOpacity(selected ? 255 : 225);
-        return bg;
-    }
-
-    CCScale9Sprite* makeButtonBackground(float width, float height, bool selected) {
-        return makeNineSlice(width, height, 0.16f, selected);
+    CCSprite* makeButtonBackground(float width, float height, bool selected) {
+        return makePill(width, height, selected);
     }
 
     enum class CycleKind {
@@ -291,11 +280,11 @@ namespace {
         struct ButtonRef {
             CCMenuItemSpriteExtra* item = nullptr;
             CCLabelBMFont* label = nullptr;
-            CCScale9Sprite* background = nullptr;
+            CCSprite* background = nullptr;
         };
 
         struct ChipRef {
-            CCScale9Sprite* bg = nullptr;
+            CCSprite* bg = nullptr;
             CCLabelBMFont* label = nullptr;
             std::string name;
         };
@@ -580,18 +569,20 @@ namespace {
             if (value) m_metrics.push_back({metric, value, {}});
         }
 
-        void toggleRow(int row, std::string key, char const* text) {
+        // labelX lets two toggles share a row (the second one starts mid-panel).
+        void toggleRow(int row, std::string key, char const* text, float labelX = kLeft + 28.f) {
+            float const boxX = labelX - 17.f;
             auto* toggler = CCMenuItemToggler::createWithStandardSprites(
                 this, menu_selector(RebornPopup::onToggle), 0.5f
             );
             if (!toggler) return;
             toggler->setTag(static_cast<int>(m_toggles.size()));
             m_pageMenu->addChild(toggler);
-            toggler->setPosition({kLeft + 11.f, rowY(row)});
+            toggler->setPosition({boxX, rowY(row)});
             m_toggles.push_back({toggler, std::move(key)});
 
             addLabel(m_pageRoot, text, "bigFont.fnt", 0.36f, kTextPrimary, 235,
-                     kLeft + 28.f, rowY(row), 1);
+                     labelX, rowY(row), 1);
         }
 
         ButtonRef pillAt(
@@ -639,7 +630,7 @@ namespace {
         }
 
         void buildOverview() {
-            headingRow(0, "LIVE");
+            headingRow(0, "OVERVIEW - LIVE");
             statRow(1, "Frame", "frame");
             statRow(2, "Pipeline", "pipeline");
 
@@ -675,15 +666,13 @@ namespace {
             this->toggleRow(3, "cap-particles", "Cap particle pool size");
             this->toggleRow(4, "adaptive-cap", "Adaptive cap (experimental)");
 
-#ifdef GEODE_IS_WINDOWS
             float const half = (kContentWidth - kGap) / 2.f;
             this->cycleRow(5, "Particle cap", CycleKind::ParticleCap, "particle-cap", half,
                            kLeft + half / 2.f);
-            this->toggleRow(6, "render-gate", "Render gate");
-#else
-            cycleRow(5, "Particle cap", CycleKind::ParticleCap, "particle-cap");
-            statRow(6, "Work avoided", "avoided");
+#ifdef GEODE_IS_WINDOWS
+            this->toggleRow(5, "render-gate", "Render gate", kRight - half + 28.f);
 #endif
+            statRow(6, "Work avoided", "avoided");
         }
 
         void buildCulling() {
@@ -727,7 +716,7 @@ namespace {
             this->toggleRow(0, "show-overlay", "Performance overlay");
             cycleRow(1, "Overlay detail", CycleKind::Detail, "overlay-detail");
             cycleRow(2, "Overlay corner", CycleKind::Corner, "overlay-corner");
-            headingRow(3, "MEASURED, NOT ESTIMATED");
+            headingRow(3, "DIAGNOSTICS - MEASURED, NOT ESTIMATED");
             statRow(4, "Frame", "diag-frame");
             statRow(5, "CPU draw time", "diag-cpu");
             auto bench = this->pillAt(0.f, rowY(6), 200.f, "Benchmark",
@@ -1036,8 +1025,7 @@ class $modify(RebornPauseLayer, PauseLayer) {
         auto* holder = CCNode::create();
         holder->setContentSize({width, width});
 
-        // Same texture-derived cap insets as the popup controls.
-        auto* bg = makeNineSlice(width, width, 0.16f, false);
+        auto* bg = makePill(width, width, false);
         if (bg) {
             bg->setColor(ccc3(46, 54, 76));
             bg->setOpacity(235);
