@@ -339,7 +339,7 @@ namespace {
 
         void buildTabs() {
             m_tabMenu = CCMenu::create();
-            m_tabMenu->setPosition({0.f, 0.f});
+            m_tabMenu->setPosition({kPopupWidth / 2.f, kPopupHeight / 2.f});
             m_mainLayer->addChild(m_tabMenu, 10);
 
             float const width = 78.f;
@@ -372,7 +372,7 @@ namespace {
 
         void buildFooter() {
             m_footerMenu = CCMenu::create();
-            m_footerMenu->setPosition({0.f, 0.f});
+            m_footerMenu->setPosition({kPopupWidth / 2.f, kPopupHeight / 2.f});
             m_mainLayer->addChild(m_footerMenu, 10);
 
             this->footerButton("Reset", -120.f, menu_selector(RebornPopup::onReset));
@@ -443,11 +443,12 @@ namespace {
             m_mainLayer->addChildAtPosition(m_pageRoot, Anchor::Center, ccp(0.f, -16.f));
 
             if (auto* card = makeCard(kPageWidth, kPageHeight)) {
+                card->setPosition({kPageWidth / 2.f, kPageHeight / 2.f});
                 m_pageRoot->addChild(card);
             }
 
             m_pageMenu = CCMenu::create();
-            m_pageMenu->setPosition({0.f, 0.f});
+            m_pageMenu->setPosition({kPageWidth / 2.f, kPageHeight / 2.f});
             m_pageRoot->addChild(m_pageMenu);
 
             switch (m_page) {
@@ -467,7 +468,10 @@ namespace {
             char const* font = "bigFont.fnt", std::uint8_t opacity = 255, bool left = false
         ) {
             auto* label = makeLabel(text, font, scale, opacity, left);
-            if (label) m_pageRoot->addChild(label), label->setPosition({x, y});
+            if (label) {
+                m_pageRoot->addChild(label);
+                label->setPosition({kPageWidth / 2.f + x, kPageHeight / 2.f + y});
+            }
             return label;
         }
 
@@ -524,7 +528,7 @@ namespace {
 
             if (auto* label = makeLabel(text, "bigFont.fnt", 0.4f, 235, true)) {
                 m_pageRoot->addChild(label);
-                label->setPosition({x + 18.f, y});
+                label->setPosition({kPageWidth / 2.f + x + 18.f, kPageHeight / 2.f + y});
             }
         }
 
@@ -1020,10 +1024,11 @@ class $modify(RebornPauseLayer, PauseLayer) {
         menu->addChild(button);
         menu->setPosition({0.f, 0.f});
 
-        // Bottom-left corner: the top-right belongs to Eclipse's draggable menu button,
-        // which can sit anywhere along the right edge. The bottom-left is free on the
-        // stock pause layout and stays clear of the P1/P2 indicator.
-        button->setPosition({56.f, 56.f});
+        // Sits just past the native pause row (which ends around +158 design units from
+        // centre) instead of in a corner. Eclipse's draggable menu button can occupy any
+        // corner, so the row remains the one place it does not cover.
+        auto const win = CCDirector::get()->getWinSize();
+        button->setPosition({win.width / 2.f + 205.f, win.height / 2.f - 11.f});
         menu->setTouchPriority(-600);
         this->addChild(menu, 100);
     }
