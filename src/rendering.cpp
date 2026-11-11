@@ -561,15 +561,21 @@ namespace {
         return out;
     }
 
+    struct TraceFlush {
+        std::uint64_t binds = 0;
+        std::uint64_t redundant = 0;
+    };
+
     // Called from renderFrameEnd(); cheap when disabled (one bool + one clock read per frame).
-    void traceMaybeFlush(std::chrono::steady_clock::time_point now) {
-        if (!reborn::config().shaderTrace) return;
-        if (now - g_traceLastFlush < kTraceWindow) return;
+    // Returns the window's deltas so the caller can publish them once the flush ran.
+    TraceFlush traceMaybeFlush(std::chrono::steady_clock::time_point now) {
+        TraceFlush out;
+        if (!reborn::config().shaderTrace) return out;
+        if (now - g_traceLastFlush < kTraceWindow) return out;
         g_traceLastFlush = now;
 
-        // Publish the window totals through the atomic counters the overlay reads.
-        g_hot.shaderTraceBinds += g_traceBinds;
-        g_hot.shaderTraceRedundant += g_traceRedundant;
+        out.binds = g_traceBinds;
+        out.redundant = g_traceRedundant;
 
         log::info(
             "shader-trace: binds {} (redundant {}), batches {}, binds/batch avg {:.1f} max {}, "
@@ -586,6 +592,7 @@ namespace {
         g_traceBatchBinds = 0;
         g_traceMaxBatchBinds = 0;
         g_traceUntracked = 0;
+        return out;
     }
 
     // Hot-path counters.
@@ -741,12 +748,14 @@ namespace reborn {
         add(c.batchQuads, g_hot.batchQuads);
         add(c.emptyBatchDrawsSkipped, g_hot.emptyBatches);
         add(c.batchCulls, g_hot.batchCulled);
+        auto const flush = traceMaybeFlush(std::chrono::steady_clock::now());
+        g_hot.shaderTraceBinds += flush.binds;
+        g_hot.shaderTraceRedundant += flush.redundant;
+
         add(c.programBindsSkipped, g_hot.programBindsSkipped);
         add(c.particleSimsSuppressed, g_hot.particleSimsSuppressed);
         add(c.shaderTraceBinds, g_hot.shaderTraceBinds);
         add(c.shaderTraceRedundant, g_hot.shaderTraceRedundant);
-
-        traceMaybeFlush(std::chrono::steady_clock::now());
     }
 
     unsigned int effectiveParticleCap();  // defined in config.cpp (adaptive step included)
