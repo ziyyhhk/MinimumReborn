@@ -294,7 +294,7 @@ namespace {
     class RebornPopup;
     RebornPopup* g_openPanel = nullptr;
 
-    class RebornPopup : public Popup, public CCKeyboardDelegate {
+    class RebornPopup : public Popup {
     protected:
         enum Page : int {
             Overview = 0, Render, Culling, Input, Editor, Diagnostics, PageCount
@@ -355,6 +355,7 @@ namespace {
         CCLabelBMFont* m_headerProfile = nullptr;
         CCLabelBMFont* m_benchLabel = nullptr;
         CCLabelBMFont* m_statusLabel = nullptr;
+        geode::ListenerHandle m_escapeListener;
 
         static constexpr char const* kPageNames[] = {
             "Overview", "Render", "Culling", "Input", "Editor", "Diag"
@@ -382,11 +383,19 @@ namespace {
                 }
             }
 
-            // Escape closes. The game's panels have no global focus chain, so focus rings
-            // are omitted rather than faked; Tab order is not implemented for the same reason.
-            if (auto* dispatcher = CCKeyboardDispatcher::get()) {
-                dispatcher->addDelegate(this);
-            }
+            // Escape closes. Geode's KeyboardInputEvent fires before the game's own
+            // keyboard dispatch, so consuming Escape here is safe and never double-closes
+            // with the game's native popup handling. No default-tab focus exists in GD
+            // menus, so there is no focus trap to assist.
+            m_escapeListener = geode::KeyboardInputEvent(cocos2d::enumKeyCodes::KEY_Escape).listen(
+                [](geode::KeyboardInputData& data) {
+                    if (data.action == geode::KeyboardInputData::Action::Press && g_openPanel) {
+                        g_openPanel->closePopup(nullptr);
+                        return true;
+                    }
+                    return false;
+                }
+            );
 
             this->buildHeader();
             this->buildNav();
@@ -416,8 +425,10 @@ namespace {
             return kLeft + kTabWidth * (static_cast<float>(index) + 0.5f);
         }
 
-        void keyDown(enumKeyCodes key, double) override {
-            if (key == KEY_Escape) this->closePopup(nullptr);
+        void onExit() override {
+            if (g_openPanel == this) g_openPanel = nullptr;
+            // The listener unregisters itself when the ListenerHandle member goes away.
+            Popup::onExit();
         }
 
         CCLabelBMFont* addLabel(
@@ -1109,14 +1120,6 @@ namespace {
                 std::snprintf(text, sizeof(text), "--");
             }
             return text;
-        }
-
-        void onExit() override {
-            if (g_openPanel == this) g_openPanel = nullptr;
-            if (auto* dispatcher = CCKeyboardDispatcher::get()) {
-                dispatcher->removeDelegate(this);
-            }
-            Popup::onExit();
         }
 
         void refreshLive(float) {
