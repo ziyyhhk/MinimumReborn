@@ -117,16 +117,20 @@ namespace {
                 char lowText[32];
                 if (lowFps > 0.5) std::snprintf(lowText, sizeof(lowText), "%.0f", lowFps);
                 else std::snprintf(lowText, sizeof(lowText), "--");
+                char gpuText[32];
+                float const gpuMs = counters.gpuFrameMs.load(std::memory_order_relaxed);
+                if (gpuMs >= 0.01f) std::snprintf(gpuText, sizeof(gpuText), "%.2f ms", gpuMs);
+                else std::snprintf(gpuText, sizeof(gpuText), "--");
                 std::snprintf(
                     text, sizeof(text),
                     "%s%u FPS%s | avg %.1f ms | p95 %.1f ms | 1%% low %s\n"
-                    "logic %u/s | draw %.2f ms (worst %.2f ms) | %s | renderer %s\n"
+                    "logic %u/s | draw %.2f ms (worst %.2f ms) | gpu %s | %s | renderer %s\n"
                     "scene %u/%u/s | sprite fast-out %u/s | particles %u/%u/s | editor %u/s | capped %u/s | batch culls %llu\n"
                     "sims suppressed %llu | program binds skipped %llu | trace binds %llu",
                     cfg.enabled ? "" : "(OFF) ", fps,
                     counters.throttled.load(std::memory_order_relaxed) ? " (background)" : "",
                     avgMs, p95Ms, lowText,
-                    logic, workMs, stats.worstWorkMs(240),
+                    logic, workMs, stats.worstWorkMs(240), gpuText,
                     bottleneckLabel(static_cast<reborn::Bottleneck>(counters.bottleneck.load(std::memory_order_relaxed))),
                     cfg.rendererOptimized ? "optimized" : "engine",
                     counters.sceneCulledPerSec.load(std::memory_order_relaxed),
@@ -183,18 +187,17 @@ namespace {
     ccColor3B const kOnAccent = ccc3(18, 20, 28);
     ccColor3B const kGood = ccc3(52, 209, 123);
 
-    // Sizing rule: effective render size, not code constants. Panel ~500 units wide so
-    // roughly half of a 1024x768 screen and a quarter of 1920x1080 stays visible; rows
-    // compact, text scales bumped up ~25-30% versus the previous build.
-    constexpr float kPopupWidth = 500.f;
-    constexpr float kPopupHeight = 320.f;
-    constexpr float kMargin = 14.f;
+    // Sizing rule: effective render size. Panel ~480 units (about half of a 1024x768
+    // screen); rows 31px, buttons 40px, no scrolling, nothing clipped.
+    constexpr float kPopupWidth = 480.f;
+    constexpr float kPopupHeight = 284.f;
+    constexpr float kMargin = 12.f;
     constexpr float kHeaderH = 38.f;
-    constexpr float kNavH = 30.f;
-    constexpr float kFooterH = 40.f;
-    constexpr float kRowPitch = 32.f;
+    constexpr float kNavH = 25.f;
+    constexpr float kFooterH = 34.f;
+    constexpr float kRowPitch = 31.f;
     constexpr float kButtonHeight = 40.f;
-    constexpr float kIconSize = 26.f;
+    constexpr float kIconSize = 22.f;
     constexpr float kGap = 6.f;
     constexpr float kContentWidth = kPopupWidth - 2.f * kMargin;
     constexpr float kTabWidth = kContentWidth / 6.f;
@@ -278,10 +281,10 @@ namespace {
                 parts.bg = bg;
             }
         }
-        if (auto* label = makeLabel(text, "chatFont.fnt", 0.33f)) {
+        if (auto* label = makeLabel(text, "chatFont.fnt", 0.35f)) {
             label->setColor(kind == ButtonKind::Primary ? kOnAccent : kText);
             if (kind == ButtonKind::Ghost) label->setColor(kMuted);
-            fitLabel(label, 0.33f, width - 18.f);
+            fitLabel(label, 0.35f, width - 16.f);
             label->setPosition({width / 2.f, height / 2.f});
             holder->addChild(label);
             parts.label = label;
@@ -456,20 +459,19 @@ namespace {
         void buildHeader() {
             CCNode* root = m_mainLayer;
 
+            // The game's close button lives at the left edge of the GD frame, so the header
+            // content starts after it instead of underneath it.
+            float const headerStart = kLeft + 56.f;
             if (auto* icon = CCSprite::create("icon-button.png"_spr)) {
                 float const h = icon->getContentSize().height;
                 icon->setScale(h > 0.f ? kIconSize / h : 1.f);
-                icon->setPosition({kCX + kLeft + kIconSize / 2.f, kCY + kHeaderCenterY});
+                icon->setPosition({kCX + headerStart + kIconSize / 2.f, kCY + kHeaderCenterY});
                 root->addChild(icon);
             }
 
-            // One row: title, then the subtitle right after its measured width.
-            float const textX = kLeft + kIconSize + 8.f;
-            auto* title = addLabel(root, "Minimum Reborn", "bigFont.fnt", 0.50f, kText, 255,
-                                   textX, kHeaderCenterY, 1);
-            float const titleWidth = title ? title->getContentSize().width * 0.50f + 10.f : 120.f;
-            addLabel(root, "Performance first.", "chatFont.fnt", 0.27f, kMuted, 255,
-                     textX + titleWidth, kHeaderCenterY, 1);
+            float const textX = headerStart + kIconSize + 8.f;
+            addLabel(root, "Minimum Reborn", "bigFont.fnt", 0.50f, kText, 255,
+                     textX, kHeaderCenterY, 1);
 
             ButtonParts pill = makeButton("Balanced", ButtonKind::Secondary, 104.f, 26.f);
             if (pill.holder) {
@@ -500,10 +502,10 @@ namespace {
             for (int i = 0; i < static_cast<int>(PageCount); ++i) {
                 auto* holder = CCNode::create();
                 holder->setContentSize({kTabWidth - 4.f, kNavH - 6.f});
-                auto* label = makeLabel(kPageNames[i], "bigFont.fnt", 0.31f, 200, false);
+                auto* label = makeLabel(kPageNames[i], "bigFont.fnt", 0.36f, 200, false);
                 if (label) {
                     label->setColor(kMuted);
-                    fitLabel(label, 0.31f, kTabWidth - 10.f);
+                    fitLabel(label, 0.36f, kTabWidth - 10.f);
                     label->setPosition({(kTabWidth - 4.f) / 2.f, (kNavH - 6.f) / 2.f});
                     holder->addChild(label);
                 }
@@ -535,7 +537,7 @@ namespace {
             // Sits in the free strip between content and the footer so it never overlaps.
             m_statusLabel = addLabel(m_mainLayer,
                                      "Benchmark running - profiles unlock when it stops",
-                                     "chatFont.fnt", 0.24f, kMuted, 255, 0.f, -111.f, 0);
+                                     "chatFont.fnt", 0.28f, kMuted, 255, 0.f, -111.f, 0);
             if (m_statusLabel) m_statusLabel->setVisible(false);
         }
 
@@ -569,7 +571,7 @@ namespace {
                 label->setScale(1.f);
                 label->setColor(selected ? kText : kMuted);
                 label->setOpacity(selected ? 255 : 190);
-                fitLabel(label, 0.31f, kTabWidth - 10.f);
+                fitLabel(label, 0.36f, kTabWidth - 10.f);
             }
             if (m_tabAccent) {
                 m_tabAccent->setPosition({kCX + tabCenter(static_cast<int>(m_page)),
@@ -609,7 +611,7 @@ namespace {
             this->refreshPage();
         }
 
-        void noteRow(int row, std::string const& text, float scale = 0.28f, std::uint8_t opacity = 200) {
+        void noteRow(int row, std::string const& text, float scale = 0.30f, std::uint8_t opacity = 200) {
             addLabel(m_pageRoot, text, "chatFont.fnt", scale, kMuted, opacity,
                      kLeft + 2.f, rowY(row), 1);
         }
@@ -624,7 +626,7 @@ namespace {
 
         void stripRow(int row, char const* metric) {
             // One compact line with the live counters; no label/value columns.
-            if (auto* value = addLabel(m_pageRoot, "--", "chatFont.fnt", 0.28f, kText, 255,
+            if (auto* value = addLabel(m_pageRoot, "--", "chatFont.fnt", 0.32f, kText, 255,
                                        kLeft + 2.f, rowY(row), 1)) {
                 m_metrics.push_back({metric, value, {}});
             }
@@ -632,9 +634,9 @@ namespace {
         }
 
         void statRow(int row, char const* label, char const* metric) {
-            addLabel(m_pageRoot, label, "chatFont.fnt", 0.30f, kMuted, 255,
+            addLabel(m_pageRoot, label, "chatFont.fnt", 0.31f, kMuted, 255,
                      kLeft + 2.f, rowY(row), 1);
-            auto* value = addLabel(m_pageRoot, "--", "chatFont.fnt", 0.32f, kText, 255,
+            auto* value = addLabel(m_pageRoot, "--", "chatFont.fnt", 0.34f, kText, 255,
                                    kRight - 2.f, rowY(row), 2);
             if (value) m_metrics.push_back({metric, value, {}});
             this->ledger(row);
@@ -643,18 +645,18 @@ namespace {
         // One checkbox per row. labelX shifts the second column when two share a row.
         void toggleRow(int row, std::string key, char const* text, float labelX = kLeft + 30.f,
                        ccColor3B accent = kAccent) {
-            float const boxX = labelX - 15.f;
+            float const boxX = labelX - 14.f;
             auto* holder = CCNode::create();
-            holder->setContentSize({22.f, 22.f});
+            holder->setContentSize({20.f, 20.f});
 
-            auto* box = makeRect(22.f, 22.f, kSurface, 255);
+            auto* box = makeRect(20.f, 20.f, kSurface, 255);
             if (box) {
-                box->setPosition({11.f, 11.f});
+                box->setPosition({10.f, 10.f});
                 holder->addChild(box);
             }
 
             auto* check = CCNode::create();
-            check->setPosition({11.f, 11.f});
+            check->setPosition({10.f, 10.f});
             CCSprite* bar1 = makeRect(10.f, 3.f, kOnAccent, 255);
             CCSprite* bar2 = makeRect(15.f, 3.f, kOnAccent, 255);
             if (bar1 && bar2) {
@@ -679,7 +681,7 @@ namespace {
             Checkbox state{item, box, check, false};
             m_toggles.push_back({item, std::move(key), state, accent});
 
-            addLabel(m_pageRoot, text, "bigFont.fnt", 0.32f, kText, 235,
+            addLabel(m_pageRoot, text, "bigFont.fnt", 0.36f, kText, 235,
                      labelX, rowY(row), 1);
         }
 
@@ -727,10 +729,10 @@ namespace {
                     bg->setPosition({segW / 2.f, 15.f});
                     holder->addChild(bg);
                 }
-                auto* label = makeLabel(name, "bigFont.fnt", 0.28f, 255, false);
+                auto* label = makeLabel(name, "bigFont.fnt", 0.33f, 255, false);
                 if (label) {
                     label->setColor(kText);
-                    fitLabel(label, 0.28f, segW - 10.f);
+                    fitLabel(label, 0.33f, segW - 10.f);
                     label->setPosition({segW / 2.f, 15.f});
                     holder->addChild(label);
                 }
@@ -805,7 +807,7 @@ namespace {
             statRow(2, "State", "editor-state");
             statRow(3, "Sprite draws", "editor-sprites");
             statRow(4, "Particle draws", "editor-particles");
-            noteRow(5, "Draw-only. Open the editor; selection and saving are untouched.", 0.28f);
+            noteRow(5, "Draw-only. Open the editor; selection and saving are untouched.", 0.30f);
         }
 
         void buildDiagnostics() {
@@ -978,7 +980,7 @@ namespace {
                 if (!c.label) continue;
                 std::string text = c.prefix + ": " + this->cycleValue(c, mod);
                 c.label->setString(text.c_str());
-                fitLabel(c.label, 0.30f, c.width - 14.f);
+                fitLabel(c.label, 0.33f, c.width - 16.f);
             }
 
             bool const benching = reborn::benchmarkActive();

@@ -11,11 +11,20 @@ a full rebuilt as part of this version. See the README for the honest status of 
   bind count, flushed to the Geode log every 5 s. No behavior change, no allocations, fixed-size
   state. This exists because v2.1.0's systems were shipped without confirming which GL path the
   GD 2.2 shader gameplay objects actually take - the measurement comes first, then the fix.
-* **Detailed overlay** gains `trace binds` and the two v2.1.0 counters on one line.
+* **GPU frame time (`gpu-frame-time`, bool, default on, Windows).** Measures the GPU time of the
+  submitted frame with `GL_TIME_ELAPSED` and shows it as `gpu` on the Detailed overlay. The
+  result is read back one frame late with a non-blocking availability check, so the frame path
+  never waits on the GPU. Measurement only: no GL state is changed beyond the query lifecycle.
+  This is the number that answers whether the Jawbreaker shader lag is GPU-bound.
+* **Detailed overlay** gains `gpu`, `trace binds` and the two v2.1.0 counters.
 * **UI rebuilt** against a declared design system (violet/indigo mark, game-native panel
-  language): one accent, semantic colors only, single type family with hard minimums, spacing
-  scale, radius per role, button roles with real states, equal-column tabs that cannot clip.
-  Verification loop pending user screenshots - not marked done here.
+  language): one accent, semantic colors only, sentence case, spacing/radius scales, button
+  roles. Panel is 480x284 with 31px rows and 40px buttons; nothing clips; text scales raised
+  ~15-25%. The GD native close button overlapped the header content in the last build - header
+  content now starts after it. Verification loop pending user screenshots - not marked done.
+* **Escape** closes the panel via `geode::KeyboardInputEvent` (no multi-inheritance
+  warnings); the key is consumed before the game's keyboard dispatch, so a native close
+  can never double-fire.
 
 ## v2.1.0 (2026-11-11)
 

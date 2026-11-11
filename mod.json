@@ -108,6 +108,15 @@
 			"type": "bool",
 			"default": false
 		},
+		"gpu-frame-time": {
+			"name": "GPU Frame Time (GL_TIME_ELAPSED)",
+			"description": "Measures the GPU time of the submitted frame with a GL timer query and shows it on the Detailed overlay ('gpu'). Measurement only: it never changes GL state, and the result is read back one frame late with a non-blocking availability check (the frame path never waits on the GPU). Windows only.",
+			"type": "bool",
+			"platforms": [
+				"win"
+			],
+			"default": true
+		},
 		"shader-trace": {
 			"name": "Shader Trace (diagnostic)",
 			"description": "Diagnostic counters, never changes behavior. While on, every CCGLProgram::use call is counted (total and redundant, validated against live GL state) and per-batch program binds are tracked; every 5 seconds the Geode log gets one line with the totals and the top 5 GL program objects by bind count. Used to find out which GL path the 2.2 shader triggers take. Off by default; turn it off after collecting the log.",

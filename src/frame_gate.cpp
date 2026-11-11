@@ -12,6 +12,7 @@
 #include "config.hpp"
 #include "benchmark.hpp"
 #include "frame_stats.hpp"
+#include "gpu_timer.hpp"
 #include "hud.hpp"
 #include "rendering.hpp"
 
@@ -282,7 +283,9 @@ struct RebornFrameGate : Modify<RebornFrameGate, CCDirector> {
         }
 
         Clock::time_point const drawStart = Clock::now();
+        reborn::gpuTimerBegin();
         CCDirector::drawScene();
+        reborn::gpuTimerEnd();
         Clock::time_point const drawEnd = Clock::now();
 
 #ifdef GEODE_IS_WINDOWS

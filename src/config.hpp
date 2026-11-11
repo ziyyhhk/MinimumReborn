@@ -55,6 +55,8 @@ namespace reborn {
         // Diagnostic: per-frame program-bind accounting, flushed to the log every 5 s.
         // Zero behavior change; counts and logs only.
         bool shaderTrace = false;
+        // GPU frame-time via GL_TIME_ELAPSED. Measurement only; never touches GL state.
+        bool gpuFrameTime = true;
         double particleCullMargin = 96.0;   // world units kept around the viewport
         double sceneCullMargin = 128.0;
         bool capParticles = true;
@@ -136,6 +138,7 @@ namespace reborn {
         std::atomic<std::uint64_t> particleSimsSuppressed{0};
         std::atomic<std::uint64_t> shaderTraceBinds{0};
         std::atomic<std::uint64_t> shaderTraceRedundant{0};
+        std::atomic<float> gpuFrameMs{0.f};
 
         // Editor-only culling. Kept apart from the gameplay counters so a claim about editor
         // behavior can be checked on its own.

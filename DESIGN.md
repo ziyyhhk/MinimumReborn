@@ -34,8 +34,8 @@ family) for everything else, two weights (regular 400 / semibold 600).
 
 ## Space / radius
 
-Spacing scale 4 / 8 / 12 / 16 / 24 / 32. Nothing off-scale. Panel width 470-540 logical
-units (~500); identical layout at 1024x768 and 1920x1080 except outer margins. The panel
+Spacing scale 4 / 8 / 12 / 16 / 24 / 32. Nothing off-scale. Panel width 420-540 logical
+units (~480); identical layout at 1024x768 and 1920x1080 except outer margins. The panel
 must never fill more than ~56% of the screen width at 1024x768; effective rendered
 size (checked by screenshot) beats code constants every time.
 

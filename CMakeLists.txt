@@ -11,6 +11,7 @@ add_library(${PROJECT_NAME} SHARED
     src/config.cpp
     src/rendering.cpp
     src/frame_gate.cpp
+    src/gpu_timer.cpp
     src/benchmark.cpp
     src/system_tuning.cpp
     src/ui.cpp
@@ -32,6 +33,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE src)
 target_link_libraries(${PROJECT_NAME} geode-sdk)
 
 if (WIN32)
-    # timeBeginPeriod / timeEndPeriod (system_tuning.cpp) and glFinish (frame_gate.cpp).
-    target_link_libraries(${PROJECT_NAME} winmm opengl32)
+    # timeBeginPeriod / timeEndPeriod (system_tuning.cpp), glFinish (frame_gate.cpp) and
+    # the GL_TIME_ELAPSED query entry points (gpu_timer.cpp, through GLEW's tables).
+    target_link_libraries(${PROJECT_NAME} winmm opengl32 glew32)
 endif()
