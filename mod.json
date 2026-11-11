@@ -5,9 +5,9 @@
 	},
 	"id": "ziyyhhk.minimum-reborn",
 	"name": "Minimum Reborn",
-	"version": "v2.0.0",
+	"version": "v2.1.0",
 	"developer": "ziyyhhk",
-	"description": "A rendering-focused rebuild of Minimum with a native in-game control panel. Engine or Optimized renderer mode, zero-pixel and off-screen draw fast-outs, whole-batch culling of level object layers (opt-in), particle culling measured from live particle data, an editor-only culling policy, and a No Additional Input Delay ordering mode that moves all mod bookkeeping behind the game's update. Physics, input handling and the game's FPS cap are never changed. Windows build for Geometry Dash 2.2081.",
+	"description": "A rendering-focused rebuild of Minimum with a native in-game control panel. Engine or Optimized renderer mode, zero-pixel and off-screen draw fast-outs, whole-batch culling of level object layers (opt-in), live-particle culling (and optional off-screen simulation suppression), an editor-only culling policy, and a No Additional Input Delay ordering mode that moves all mod bookkeeping behind the game's update. Physics, input handling and the game's FPS cap are never changed. Windows build for Geometry Dash 2.2081.",
 	"tags": [
 		"performance",
 		"utility"
@@ -105,6 +105,21 @@
 		"batch-culling": {
 			"name": "Batch Culling",
 			"description": "Opt-in whole-batch culling for level object layers. A CCSpriteBatchNode whose entire vertex buffer lies outside the viewport plus 64 world units is skipped: one GL draw saved for every off-screen batch. The test only runs while the atlas buffer is in sync with the VBO (a dirty buffer or a pending child sort always draws), the box is measured from the actual quads every frame, and the scan is capped at 24,000 quads per frame. Off by default; Performance and Extreme profiles turn it on. Draw-only; nothing is re-batched, reordered or rewritten.",
+			"type": "bool",
+			"default": false
+		},
+		"shader-state-cache": {
+			"name": "Skip Redundant Program Binds",
+			"description": "Skips glUseProgram when the driver already has this exact program bound, validated against the live GL state on every call - there is no cache to go stale. cocos2d routes every program bind through CCGLProgram::use, which is where program churn actually happens. Windows only. Off by default; watch the Detailed overlay counter to see whether it pays on your machine.",
+			"type": "bool",
+			"platforms": [
+				"win"
+			],
+			"default": false
+		},
+		"particle-suppression": {
+			"name": "Suppress Off-Screen Particle Simulation",
+			"description": "Skips update() entirely for particle systems whose live particles are fully outside the expanded viewport: no emission, no integration, no quad rebuild, no draws - zero work. Particle state freezes off screen and resumes untouched when the emitter scrolls back into view; nothing is deleted mid-frame. Relative and Grouped systems only; Free systems always simulate. Margin follows the particle cull mode. Off by default.",
 			"type": "bool",
 			"default": false
 		},

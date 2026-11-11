@@ -4,13 +4,14 @@ A rendering-focused optimization mod for Geometry Dash 2.2081, built with C++20 
 Geode SDK. It is a successor to [Minimum](https://github.com/ziyyhhk/Minimum), with the
 render path as the main subject rather than a settings collection.
 
-**Status: v2.0.0.** The measured runtime evidence in this
+**Status: v2.1.0.** The measured runtime evidence in this
 README and in `DEVELOPMENT_REPORT.md` - the Engine vs Optimized A/B table and the skip counts -
 comes from earlier in-game runs on a Windows laptop, not from estimates. What has *not* been run
-in-game here is v1.5.x, v1.6.x and now v2.0.0: those were built by CI and installed, but not launched
+in-game here is v1.5.x, v1.6.x, v2.0.0 and now v2.1.0: those were built by CI and installed, but not launched
 or played (the owner tests them), so no FPS or latency number is claimed for the newest features
-(v2.0.0's whole-batch cull and the rebuilt particle cull are argued from the cocos2d-x 2.2
-headers and ship fail-open with counters; see sections 13 and 14). The measurements did change
+(v2.0.0's whole-batch cull and the rebuilt particle cull, and v2.1.0's GL program-bind dedup
+and off-screen particle suppression, are argued from the cocos2d-x 2.2 headers and ship
+fail-open with counters; see sections 13, 14 and 15). The measurements did change
 the design: GD batches its level objects, so the per-sprite scene cull cannot see them. Scene
 culling is opt-in and off in the default profile, and this file says so. See section 9 for the
 measured Engine vs Optimized A/B and for what the draw path actually avoids.
@@ -565,3 +566,55 @@ nobody has watched a level render through it yet. The counter to check on the fi
 and the level must look intact. If it does not, turn `batch-culling` off; the rest of the mod is
 unchanged. No FPS gain is claimed for it; the claim is that off-screen level chunks stop paying
 their submission, plus the physics/inputs/cap claim that holds for every version of this mod.
+
+## 15. v2.1.0 - the suppression pass: program binds and off-screen particle simulation
+
+Two more opt-in systems, both default off, both counted:
+
+**Skip Redundant Program Binds** (`shader-state-cache`, Windows). Every program bind in the game
+goes through `CCGLProgram::use()`; the hook validates the *live driver state*
+(`glGetIntegerv(GL_CURRENT_PROGRAM)`) before calling the original, and skips the `glUseProgram`
+when the program is already bound. No cache is kept, so a bind that happens anywhere outside the
+hook is picked up by the very next `use()` — the classic stale-cache corruption class cannot
+occur here. `programBindsSkipped` counts the skips and shows on the Detailed overlay. Honest
+frame: one driver query per candidate skip in exchange for not re-binding; whether the exchange
+wins on your machine has not been measured, which is why it is off by default.
+
+**Suppress Off-Screen Particle Simulation** (`particle-suppression`). v2.0.0 stopped the GPU
+work for off-screen particles but kept the CPU simulation running. This hook skips
+`CCParticleSystem::update` for systems whose live particles are fully outside the expanded
+viewport (the same live-particle AABB as the draw cull; Relative and Grouped only). Emission,
+integration and the quad rebuild do not run. Particle state freezes off screen and resumes with
+the next frame's normal dt when it scrolls back into view — no backlog burst, nothing deleted
+mid-frame, no cocos2d state corruption path. `particleSimsSuppressed` counts the suppressed
+updates; the Detailed overlay shows it.
+
+**Evaluated and not done:**
+
+* Skipping update for off-screen unbatched sprites — cocos2d has no per-node update worth
+  gating (actions/animations run through the global `CCScheduler`/`CCActionManager`); freezing
+  them desynchronizes animations everywhere. Not compatible with this mod's timing rule.
+* Grouping/reordering draws by program or texture — z-order and blending make it unsafe;
+  correctness beats batching.
+* Static-content caching — no invalidation signal a mod can hook.
+* Shader precompilation at load — `CCShaderCache` already preloads the standard programs.
+
+**Settings map** (the owner's master prompt asked for `enableCulling`, `particleBudget`,
+`particleCullMode`, `shaderStateCache`, `drawOptimizations` plus a master toggle; the existing
+settings already fill those roles and renaming would break saved user settings):
+
+| Requested | Lives here | Default |
+|---|---|---|
+| master toggle | `enabled` | on |
+| enableCulling | `cull-offscreen-particles` + `particle-cull-mode`, `scene-cull`, `batch-culling`, `editor-culling` | on for particles, off for scene/batch |
+| particleBudget | `cap-particles` / `particle-cap`, `spawn-budget` | cap 128, budget off |
+| particleCullMode | `particle-cull-mode` (geometry mode) + `particle-suppression` (full suppression) | Conservative, off |
+| shaderStateCache | `shader-state-cache` | off |
+| drawOptimizations | `sprite-fast-path`, `skip-idle-particles`, `batch-culling` | on / on / off |
+
+**Verification**: CI green (Windows, Geode 5.11.2). Not launched in-game; FPS impact: **not
+measured**. The two new hooks are build-clean and their Windows import symbols are present in
+`libcocos2d.dll` (`?use@CCGLProgram@cocos2d@@QEAAXXZ`,
+`?update@CCParticleSystem@cocos2d@@UEAAXM@Z`), but hook *installation* happens at runtime and
+has not been exercised here — treat them as unverified until the first launch shows them on the
+Detailed overlay.

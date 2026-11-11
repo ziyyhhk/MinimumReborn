@@ -122,7 +122,8 @@ namespace {
                     text, sizeof(text),
                     "%s%u FPS%s | avg %.1f ms | p95 %.1f ms | 1%% low %s\n"
                     "logic %u/s | draw %.2f ms | %s | renderer %s\n"
-                    "scene %u/%u/s | sprite fast-out %u/s | particles %u/%u/s | editor %u/s | capped %u/s | batch culls %llu",
+                    "scene %u/%u/s | sprite fast-out %u/s | particles %u/%u/s | editor %u/s | capped %u/s | batch culls %llu\n"
+                    "sims suppressed %llu | program binds skipped %llu",
                     cfg.enabled ? "" : "(OFF) ", fps,
                     counters.throttled.load(std::memory_order_relaxed) ? " (background)" : "",
                     avgMs, p95Ms, lowText, stats.spikeCount(240, 25.0),
@@ -137,7 +138,11 @@ namespace {
                     counters.editorCulledPerSec.load(std::memory_order_relaxed),
                     counters.cappedPerSec.load(std::memory_order_relaxed),
                     static_cast<unsigned long long>(
-                        counters.batchCulls.load(std::memory_order_relaxed))
+                        counters.batchCulls.load(std::memory_order_relaxed)),
+                    static_cast<unsigned long long>(
+                        counters.particleSimsSuppressed.load(std::memory_order_relaxed)),
+                    static_cast<unsigned long long>(
+                        counters.programBindsSkipped.load(std::memory_order_relaxed))
                 );
             }
             else {
@@ -912,6 +917,7 @@ namespace {
                 "show-overlay", "no-input-delay", "editor-culling", "timer-resolution",
                 "adaptive-cap", "low-latency", "enabled", "render-gate",
                 "background-throttle", "cull-offscreen-particles",
+                "shader-state-cache", "particle-suppression",
             };
             bool neutral = false;
             for (auto const* name : kProfileNeutral) {

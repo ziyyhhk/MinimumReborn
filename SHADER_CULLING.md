@@ -178,3 +178,22 @@ defensible statement this file can make: this mod removes draw submissions and t
 setup for work that cannot be seen - per sprite and per particle system, where the node's own
 transform is available and the bound is exact - measures the removal, and leaves GD's batching,
 ordering and shaders alone. Anything beyond that would be a claim, not an implementation.
+
+## 11. v2.1.0: redundant program binds (shader-state-cache)
+
+The per-node GL program churn happens inside `CCGLProgram::use()`. The hook asks the driver for
+`GL_CURRENT_PROGRAM` on every call and skips `glUseProgram` only when it matches the program's
+`m_uProgram`. There is no cached assumption or tracking table: the GL state itself is the
+oracle, so a bind made anywhere outside the hook is picked up by the very next `use()`. The
+`bound > 0` guard keeps an unlinked program from silencing the original call. Cost is one
+driver query per candidate; whether that beats the bind is not measured, which is why it ships
+off by default with a `programBindsSkipped` counter on the Detailed overlay.
+
+Not claimed, deliberately: no texture-bind elimination (cocos2d's ccGLStateCache already dedups
+`glBindTexture(0, ...)` calls), no program sorting or batching (blending/z-order; see section 8
+and the section 10 note), no shader precompilation at load (`CCShaderCache` already preloads the
+standard programs at engine init).
+
+Section 9 added the whole-batch draw skip and v2.1.0 adds a redundant-bind skip and off-screen
+particle simulation suppression; the invariant is unchanged: a batch is drawn in full or not at
+all, particles are simulated or not at all, and nothing is ever rewritten, reordered or merged.

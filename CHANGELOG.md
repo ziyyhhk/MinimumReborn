@@ -1,5 +1,44 @@
 # Changelog
 
+## v2.1.0 (2026-11-11)
+
+Two more opt-in systems, both implemented fail-open and both report through their own counters.
+Physics, timing, input handling, draw order, blending and glow are unchanged.
+
+* **Skip Redundant Program Binds** (`shader-state-cache`, bool, default off, Windows). The
+  original GL dance per node happens inside `CCGLProgram::use`; the hook there checks the live
+  driver state (`glGetIntegerv(GL_CURRENT_PROGRAM)`) and skips the `glUseProgram` call when the
+  program is already bound. There is no cached assumption anywhere, so a bind done by anyone
+  outside the hook is picked up by the next `use()` - it cannot go stale. Counted in the new
+  `programBindsSkipped` counter, shown on the Detailed overlay. Whether it pays on your machine
+  is a measured question (per-call query vs per-call bind); it is off by default because the
+  trade has not been measured.
+* **Suppress Off-Screen Particle Simulation** (`particle-suppression`, bool, default off). The
+  draw cull from v2.0.0 removed the submission but left the simulation running. This hooks
+  `CCParticleSystem::update` and skips it for systems whose live particles are fully outside
+  the expanded viewport (same live-particle AABB test, Relative/Grouped only). Emission,
+  integration and the quad rebuild do not run; particle state freezes off screen and resumes
+  with the next frame's normal dt when it scrolls back into view. Nothing is deleted
+  mid-frame, so there is no cocos2d state corruption path. Counted in the new
+  `particleSimsSuppressed` counter, shown on the Detailed overlay.
+* Overlay Detailed mode is now four lines with both counters.
+
+Evaluated and deliberately NOT done, with reasons:
+
+* Skipping update for off-screen unbatched sprites: cocos2d runs node updates through
+  `CCScheduler`/`CCActionManager` globally, not through a per-node `update()` worth gating, and
+  freezing action updates desynchronizes animations everywhere - the mod's own rule (no
+  timing/physics change) forbids it.
+* Reordering/grouping draws by program or texture: transparency and z-order in the level path
+  make this unsafe; correctness beats batching, so this was left for a batch the engine batches
+  itself.
+* Static-content caching ("nodes unchanged never redrawn"): cocos2d-x has no invalidation
+  signal a mod can hook; anything there would be a guess.
+* Shader precompilation at load: cocos2d's `CCShaderCache` already preloads the standard
+  programs at engine init.
+
+Not measured: this build has not been launched in-game. No FPS gain is claimed.
+
 ## v2.0.0 (2026-11-11)
 
 The two features this project had been circling since v1.5.0, both implemented fail-open and
