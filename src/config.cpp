@@ -254,6 +254,7 @@ namespace reborn {
         c.particleCull = parseCullMode(mod->getSettingValue<std::string>("particle-cull-mode"));
         c.sceneCull = parseCullMode(mod->getSettingValue<std::string>("scene-cull"));
         c.batchCulling = mod->getSettingValue<bool>("batch-culling");
+        c.customShaderFilter = mod->getSettingValue<bool>("custom-shader-filter");
         c.particleSuppression = mod->getSettingValue<bool>("particle-suppression");
         c.shaderTrace = mod->getSettingValue<bool>("shader-trace");
         c.gpuFrameTime = mod->getSettingValue<bool>("gpu-frame-time");
@@ -324,6 +325,7 @@ namespace reborn {
         mod->setSettingValue<std::string>("particle-cull-mode", "Conservative");
         mod->setSettingValue<std::string>("scene-cull", "Off");
         mod->setSettingValue<bool>("batch-culling", true);
+        mod->setSettingValue<bool>("custom-shader-filter", true);
         // Retired key: cocos2d already caches program binds, so there is nothing to opt into.
         // Reset it to false so an old install does not leave a misleading value behind.
         mod->setSettingValue<bool>("shader-state-cache", false);

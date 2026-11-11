@@ -4,13 +4,14 @@ A rendering-focused optimization mod for Geometry Dash 2.2081, built with C++20 
 Geode SDK. It is a successor to [Minimum](https://github.com/ziyyhhk/Minimum), with the
 render path as the main subject rather than a settings collection.
 
-**Status: v2.4.0.** The measured runtime evidence in this
+**Status: v2.4.1.** The measured runtime evidence in this
 README and in `DEVELOPMENT_REPORT.md` - the Engine vs Optimized A/B table and the skip counts -
 comes from earlier in-game runs on a Windows laptop, not from estimates. Those runs predate the
-v2.4.0 per-quad batch filter, so they do not measure it. The custom panel was
+v2.4.0 per-quad batch filter and the v2.4.1 custom-shader filter, so they do not measure the
+current build. The custom panel was
 **removed in v2.3.0**: every setting is edited on the native Geode settings page, which the
-pause menu's MR button opens directly. v2.4.0 has not been launched or played yet; FPS impact of
-the batch filter and of the GPU frame-time line is **not measured**.
+pause menu's MR button opens directly. v2.4.1 has not been launched or played yet; FPS impact of
+the batch filters and of the GPU frame-time line is **not measured**.
 
 ## What it does
 
@@ -61,13 +62,16 @@ a small margin are left out; every kept quad stays in its original atlas positio
 vertices are byte-identical to the normal draw. The batch keeps its single GL draw, its blend
 state and its normal vertex upload, so overlapping objects blend in the same order.
 
-The filter is fail-open by construction. It runs only for the stock `PositionTextureColor`
-program (a custom shader can move vertices) and only when no grid is active and the projection is
-screen-space. The child `updateTransform` pass runs first, exactly where the original runs it,
-and the quad count is re-read afterwards because that pass can grow the atlas. More than 16,383
-quads, a non-finite coordinate, a pending child sort or an exhausted per-frame budget (24,000
-quads) falls back to the untouched draw. If no quad survives, the GL submission is skipped and
-the atlas dirty flag stays set for the next normal upload. Only `draw()` is affected; `visit()`,
+The filter is fail-open by construction. It runs for the stock `PositionTextureColor` program,
+or for a custom program whose vertex stage is byte-identical to the stock pass-through (the
+shape of fragment-only effects GD's shader library uses; `custom-shader-filter`, default on). A
+custom vertex stage that could displace geometry, an active grid, a non-screen-space projection
+or any doubt falls back to the untouched draw. The child `updateTransform` pass runs first,
+exactly where the original runs it, and the quad count is re-read afterwards because that pass
+can grow the atlas. More than 16,383 quads, a non-finite coordinate, a pending child sort or an
+exhausted per-frame budget (65,536 quads) falls back to the untouched draw. If no quad
+survives, the GL submission is skipped and the atlas dirty flag stays set for the next normal
+upload. Only `draw()` is affected; `visit()`,
 updates, triggers, physics and object management are untouched.
 
 **Status: not measured in-game.** The counter to watch on the first run is `quads culled /
@@ -299,11 +303,13 @@ Runtime evidence (this laptop, details and numbers above):
   quad is outside the expanded viewport; a particle system only when it is Relative or Grouped
   and its live-particle AABB misses the expanded viewport; a batch quad only when it has zero
   projected area or its whole projected box is outside the clip volume, and only under the
-  stock shader, with no grid, no pending sort and a screen-space projection. Idle-system,
+  stock program, or a custom program whose vertex stage is byte-identical to the stock
+  pass-through (`custom-shader-filter`, default on), with no grid, no pending sort and a
+  screen-space projection. Idle-system,
   zero-pixel and batch-quad skips can only fire where the original draw would submit geometry
   covering no pixels.
 
-### Trace procedure (v2.4.0)
+### Trace procedure (v2.4.1)
 
 The old benchmark UI is gone. The replacement is the `shader-trace` setting plus the Detailed
 overlay:
@@ -655,6 +661,7 @@ settings already fill those roles and renaming would break saved user settings):
 | particleCullMode | `particle-cull-mode` (geometry mode) + `particle-suppression` (full suppression) | Conservative, off |
 | shaderStateCache | `shader-state-cache` | retired in v2.4.0 (inert key) |
 | drawOptimizations | `sprite-fast-path`, `skip-idle-particles`, `batch-culling` | on / on / on |
+| customShaderCull | `custom-shader-filter` (fragment-only programs verified against the stock vertex stage) | on |
 
 **Verification**: CI green (Windows, Geode 5.11.2). Not launched in-game; FPS impact: **not
 measured**. The two new hooks are build-clean and their Windows import symbols are present in

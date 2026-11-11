@@ -1,5 +1,26 @@
 # Changelog
 
+## v2.4.1
+
+An iteration of the shader path, aimed at sessions where shaders, deco and triggers push the
+frame hard. It is not verified in-game; no FPS claim is made.
+
+* **Custom Shader Filter** (`custom-shader-filter`, bool, **on by default**). Fragment-only
+  shader effects - the shape GD's shader library uses - keep the vertex pass-through, so their
+  vertices are still where the stock draw would put them. The batch filter now also accepts a
+  batch program whose vertex stage is verified byte-identical to the stock PositionTextureColor
+  program, instead of bailing to the original draw. Verification happens per frame on Windows
+  and is fail-open: any mismatch, ambiguity or doubt draws untouched. A custom vertex stage
+  that can displace geometry (waves, shockwaves, lens distortions) is never filtered. The new
+  key is additive; existing settings stay stable.
+* **Tighter live-particle cull.** The particle draw cull no longer bounds the live particle AABB
+  by a bounding circle; the world-space rectangle is computed from the four corners and tested
+  against the expanded viewport - the same test the sprite fast-out uses, and strictly tighter
+  than the circle, so more off-screen systems are skipped with no visual change.
+* **Scan budget raised from 24,000 to 65,536 quads per frame.** A dense shader level can exceed
+  the old cap, which used to silently draw untested; the new cap covers the GD object limit.
+* This build has not been released or tested in-game.
+
 ## v2.4.0
 
 This release makes the optimized renderer reach the path Geometry Dash actually uses for level

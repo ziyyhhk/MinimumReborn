@@ -47,17 +47,20 @@ No decision is taken inside an input callback, a scheduler callback, or a node's
 * **Parent transforms**: the node's world basis (origin plus two unit vectors) is computed with
   three `convertToWorldSpace` calls per parent per frame, memoized in a 1024-slot direct-mapped
   table with a one-entry sibling memo. Nothing is kept across frames.
-* **Particle systems**: relative-position systems only. The bound is the worst-case reach -
-  speed plus speed variance, life plus life variance, gravity, radial and tangential
-  acceleration, start/end radius, position variance, source offset and particle size - scaled
-  to world units. Free and grouped systems are always drawn because no safe bound exists. A
-  center-inside shortcut keeps the common case at one circle test.
+* **Particle systems**: Relative and Grouped systems only. The bound is measured from the
+  actual particle positions this frame (plus each particle's own size), with the same
+  per-particle translation correction cocos2d applies for Relative emitters; the AABB is
+  mapped to the world through the emitter's own frame and tested against the expanded
+  viewport. Free systems are always drawn (their absolute frame has no safe transform). A
+  center-inside shortcut keeps the common case at one point test. Section 12 and the particle
+  paragraph of section 9 describe it.
 * **Batches**: every quad is projected through the current P * MV. A quad is left out of the
   index list when its four projected corners have zero area (GD's hidden objects) or when the
   whole projected box is outside the clip volume plus 0.005 NDC. Kept quads stay in atlas
-  order. Custom shaders, active grids, non-screen-space projections, non-finite data, more
-  than 16,383 quads and an exhausted scan budget all fall back to the original draw. Section
-  12 has the full gate list.
+  order. Custom shaders that could displace vertices, verified fragment-only programs aside,
+  active grids, non-screen-space projections, non-finite data, more than 16,383 quads and an
+  exhausted scan budget all fall back to the original draw. Section 12 has the full gate and
+  `custom-shader-filter` list.
 
 * **Anything uncertain** - missing parent, missing atlas, empty or degenerate bounds,
   non-finite numbers, unknown position type - answers "draw".
@@ -163,7 +166,7 @@ now closed by construction, using the cocos2d-x 2.2 headers this binary was buil
    pending sort rebuilds the buffer inside the draw). A skipped frame therefore leaves the next
    frame byte-identical to the one the game would have produced: same quads, same order.
 
-Two further bounds: a per-frame scan budget of 24,000 quads caps the CPU cost of the feature
+Two further bounds: a per-frame scan budget of 65,536 quads caps the CPU cost of the feature
 (once spent, batches are drawn untested), and any missing or non-finite data answers "draw".
 At the time, the whole-batch cull was opt-in (`batch-culling`, off by default; on in
 Performance/Extreme) and is counted in its own `batchCulls` counter. Like every draw skip in this mod the effect is
@@ -175,6 +178,8 @@ The particle cull was rebuilt the same way. It now measures the live particle AA
 which is rotation-invariant and exactly tight to this frame's own data. The old worst-case reach
 cone could only reject a system when every possible future position was off screen, which is
 rarely true. Free systems remain drawn: their absolute frame has no transform safe to assume.
+v2.4.1 tightens the particle test further: the world-space rectangle through the four AABB
+corners replaces the bounding circle, matching the sprite fast-out's test exactly.
 
 ## 10. The limitation, stated plainly
 
@@ -226,6 +231,10 @@ On a shader-heavy level the batch is on screen while many of its quads are not: 
 visibility pass collapses hidden objects to four `(0,0,0)` vertices, and those quads are still
 uploaded, shaded and discarded. The per-quad filter attacks exactly that.
 
+v2.4.1 extends the same filter to one more shape of batch program: a fragment-only effect
+whose vertex stage is byte-identical to the stock program's vertex stage, so its vertices land
+where the stock draw would put them. Spatial distortions still draw untouched; see the gates.
+
 **What is avoided.** For each dropped quad: the vertex shading for four vertices and the two
 triangles they would form. The batch's program bind, attribute setup, texture bind and single
 `glDrawElements` still happen when at least one quad survives; the saving is per quad, not per
@@ -246,14 +255,16 @@ draw would, so a later unfiltered draw sees identical bytes. The index VBO is ne
 
 **The gates (all fail-open).** The filter runs only when all of these hold:
 
-* the batch's shader program is the stock `kCCShader_PositionTextureColor` (a custom shader can
-  displace vertices, so its quads are never judged by their original positions);
+* the batch's shader program is the stock `kCCShader_PositionTextureColor`, or - on Windows -
+  a custom program whose vertex stage is verified byte-identical to the stock program's vertex
+  stage (`custom-shader-filter`, on by default; that is the shape fragment-only effects use). A
+  spatial distortion that could move vertices is never filtered;
 * no active `CCGridBase` on the batch (a grid redirects rendering);
 * no pending `m_bManualSortAllChildrenDirty` (a sort rebuilds quad order inside draw);
 * a screen-space projection: finite matrix and a w row of `(0,0,0,1)`;
 * `1 <= total <= 16,383` and `total <= capacity` (16-bit indices), with non-null quads,
   texture and both VBO names;
-* the per-frame scan budget (24,000 quads) still covers this batch.
+* the per-frame scan budget (65,536 quads) still covers this batch.
 
 Any failed check, non-finite coordinate, `w <= 0` or unusual projection draws the batch
 untouched through the original tail. The filter never allocates, never reorders and never

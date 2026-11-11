@@ -23,6 +23,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include "config.hpp"
 #include "rendering.hpp"
 
@@ -72,16 +73,15 @@ using namespace geode::prelude;
 // 3. Particle systems
 // ---------------------------------------------------------------------------------------
 // * Idle: no draw at all at zero live particles.
-// * Off-screen: a live particle system whose AABB (measured from the actual particle
-//   positions of this frame, expanded by the largest particle size and the viewport
-//   margin) lies fully outside the visible rect is not drawn. It still updates, so
-//   emission timing, lifetimes and motion are unchanged and it looks the same when it
-//   scrolls back. Covers the Relative and Grouped position types, whose particle
-//   positions live in emitter-local space; the AABB center is mapped to the world with
-//   a rotation-safe circle test, so emitter rotation is handled. Free systems are
-//   always drawn: their particles live in an absolute frame and no transform is safe
-//   to assume. If the emitter itself is on screen the system is drawn without touching
-//   the particle data at all.
+// * Off-screen: a live particle system whose draws live in emitter-local space and whose live
+//   particles lie fully outside the visible rect is not drawn. The AABB is measured from the
+//   actual particle positions of this frame (plus each particle's own size), mapped to the
+//   world through the emitter's own rotation, scale and origin, and tested against the
+//   expanded viewport with the same world-space corner test the sprite fast-out uses. It
+//   still updates, so emission timing, lifetimes and motion are unchanged. Covers the
+//   Relative and Grouped position types; Free systems are always drawn: their particles live
+//   in an absolute frame and no transform is safe to assume. If the emitter itself is on
+//   screen the system is drawn without touching the particle data at all.
 // * Pool cap: clamping the requested pool BEFORE the original initWithTotalParticles runs
 //   means the particle, quad and index buffers are all allocated for the capped size, so no
 //   code can ever index past its buffer. Only affects systems created afterwards.
@@ -109,8 +109,10 @@ using namespace geode::prelude;
 //     so overlapping objects blend in exactly the same sequence as before.
 //
 // Safety rules, all fail-open:
-//   * only the stock PositionTextureColor program is filtered. A custom shader can move
-//     vertices, so a batch using one is drawn untouched.
+//   * only the stock PositionTextureColor program is filtered, or - on Windows - a custom
+//     program whose vertex stage is verified byte-identical to the stock pass-through, the
+//     shape of fragment-only effects. A spatial distortion that could move vertices always
+//     draws untouched.
 //   * no active grid; a grid redirects rendering and invalidates the screen-space test.
 //   * the child updateTransform pass runs first - exactly where the original runs it - and
 //     getTotalQuads() is read again afterwards because the pass can grow the atlas.
@@ -119,7 +121,7 @@ using namespace geode::prelude;
 //   * the filtered index list lives in the mod's own buffer. The atlas's VBO and index
 //     buffer are never modified, except for the normal dirty upload, which uploads the same
 //     full [0,total) range the original draw would.
-//   * a per-frame scan budget of 24,000 quads bounds the CPU cost. A batch that does not fit
+//   * a per-frame scan budget of 65,536 quads bounds the CPU cost. A batch that does not fit
 //     in the remaining budget is drawn untested.
 //   * if no quad survives, the GL submission is skipped entirely. The atlas dirty flag is
 //     left set, so the next draw that needs the buffer uploads it once, normally.
@@ -178,7 +180,9 @@ namespace {
     // up in a level with giant batches. This is the per-frame CPU budget, in quads. Once
     // it is spent, batches are drawn untested for the rest of the frame - the cost of the
     // feature is capped no matter how big the scene is.
-    constexpr std::uint64_t kBatchScanBudget = 24000;
+    // Bounds the CPU cost; a dense shader level can carry ~50k quads per frame, so the cap
+    // is the whole GD object limit rather than a guess at typical density.
+    constexpr std::uint64_t kBatchScanBudget = 65536;
     std::uint64_t g_batchScanBudget = kBatchScanBudget;
 
     // Local -> world mapping of a node: world = origin + x * ux + y * uy.
@@ -278,10 +282,6 @@ namespace {
         return true;
     }
 
-    double basisScale(Basis const& b) {
-        return std::max(std::hypot(b.ux.x, b.ux.y), std::hypot(b.uy.x, b.uy.y));
-    }
-
     // Squared version of the same number. The per-sprite hot path never needs the square
     // root: the radius test below compares squared distance against squared radius.
     double basisScaleSquared(Basis const& b) {
@@ -352,34 +352,30 @@ namespace {
         );
     }
 
-    // True when a particle system whose particles live in emitter-local space cannot paint
+    // True when a particle system whose draws live in emitter-local space cannot paint
     // anything inside the expanded view. Covers Relative and Grouped; Free systems are left
-    // alone (their particles are in an absolute frame and no transform is safe to assume).
+    // alone (their particles live in an absolute frame and no transform is safe to assume).
     //
-    // The bound is measured from the actual particle positions this draw will submit - the
-    // same data a few calls later, with no time in between - so the test is exact, not a
-    // worst case. The local AABB is expanded by each particle's own size; the center is
-    // mapped to the world as a circle (rotation-safe for any emitter rotation) and scaled
-    // by the emitter's and its parents' scales. Any doubt answers "draw".
+    // The bound is measured from the same particle data this frame draws - including the same
+    // per-particle translation correction cocos2d applies for Relative emitters, and the emitter's
+    // own world basis for position, rotation and scale. The local AABB (expanded by each
+    // particle's own size) is mapped through the emitter's frame; the containing
+    // world-space rectangle therefore holds every quad this frame will submit. Any doubt
+    // answers "draw".
     bool particleOffScreen(CCParticleSystem* system, double margin) {
         tCCPositionType const type = system->getPositionType();
         if (type != kCCPositionTypeRelative && type != kCCPositionTypeGrouped) return false;
 
-        CCNode* parent = system->getParent();
-        if (!parent) return false;
-
+        // The emitter's own world basis, including its rotation and scale - not just the
+        // parent's, which would under-bound a rotated or scaled emitter.
         Basis basis;
-        if (!basisOf(parent, basis)) return false;
+        if (!basisOf(system, basis)) return false;
 
-        double const ownScale = std::max(std::fabs(system->getScaleX()), std::fabs(system->getScaleY()));
-        double const scale = basisScale(basis) * ownScale;
-        if (!std::isfinite(scale) || scale <= 0.0) return false;
-
-        CCPoint const world = toWorld(basis, system->getPosition());
+        CCPoint const world = basis.origin;
         if (!isFinite(world.x) || !isFinite(world.y)) return false;
 
         // Common case: the emitter is on screen, so a particle is guaranteed to be visible.
-        // This keeps the per-frame cost of visible systems to one circle test.
+        // This keeps the per-frame cost of visible systems to one point test.
         if (circleTouches(world.x, world.y, 0.0, margin)) return false;
 
         unsigned int const count = system->m_uParticleCount;
@@ -387,17 +383,27 @@ namespace {
         tCCParticle const* particles = system->m_pParticles;
         if (!particles) return false;
 
+        // Relative draws live in the emitter's frame after the engine has compensated for the
+        // emitter's translation, exactly as cocos2d's update() computes it. Grouped particles
+        // are already emitter-local.
+        CCPoint const current(system->getPositionX(), system->getPositionY());
+
         double minX = 0.0, maxX = 0.0, minY = 0.0, maxY = 0.0;
         for (unsigned int i = 0; i < count; ++i) {
-            CCPoint const& pos = particles[i].pos;
+            CCPoint const rel(particles[i].pos);
             float const size = particles[i].size;
-            if (!isFinite(pos.x) || !isFinite(pos.y) || !isFinite(size)) return false;
+            if (!isFinite(rel.x) || !isFinite(rel.y) || !isFinite(size)) return false;
+
+            CCPoint const draw = (type == kCCPositionTypeRelative)
+                ? ccp(rel.x - (current.x - particles[i].startPos.x),
+                      rel.y - (current.y - particles[i].startPos.y))
+                : rel;
 
             float const pad = size > 0.f ? size * 0.5f : 0.f;
-            double const x0 = static_cast<double>(pos.x) - pad;
-            double const x1 = static_cast<double>(pos.x) + pad;
-            double const y0 = static_cast<double>(pos.y) - pad;
-            double const y1 = static_cast<double>(pos.y) + pad;
+            double const x0 = static_cast<double>(draw.x) - pad;
+            double const x1 = static_cast<double>(draw.x) + pad;
+            double const y0 = static_cast<double>(draw.y) - pad;
+            double const y1 = static_cast<double>(draw.y) + pad;
             if (i == 0) {
                 minX = x0; maxX = x1; minY = y0; maxY = y1;
             } else {
@@ -406,19 +412,22 @@ namespace {
             }
         }
 
-        double const centerLocalX = (minX + maxX) * 0.5;
-        double const centerLocalY = (minY + maxY) * 0.5;
-        double const width = maxX - minX;
-        double const height = maxY - minY;
-        double const radiusLocal = std::sqrt(width * width + height * height) * 0.5;
-        if (!std::isfinite(radiusLocal)) return false;
+        // The particle AABB is a rotated rectangle in world space; its exact containing
+        // rectangle is a tighter bound than the old circle test, so more off-screen systems can
+        // be skipped without changing any pixel. Any doubt answers "draw".
+        CCPoint const p00 = toWorld(basis, ccp(static_cast<float>(minX), static_cast<float>(minY)));
+        CCPoint const p10 = toWorld(basis, ccp(static_cast<float>(maxX), static_cast<float>(minY)));
+        CCPoint const p01 = toWorld(basis, ccp(static_cast<float>(minX), static_cast<float>(maxY)));
+        CCPoint const p11 = toWorld(basis, ccp(static_cast<float>(maxX), static_cast<float>(maxY)));
+        if (!g_view.valid) return false;
 
-        CCPoint const center = toWorld(basis, ccp(
-            static_cast<float>(centerLocalX), static_cast<float>(centerLocalY)
-        ));
-        double const radius = radiusLocal * scale;
+        double const left = std::min(std::min(p00.x, p10.x), std::min(p01.x, p11.x));
+        double const right = std::max(std::max(p00.x, p10.x), std::max(p01.x, p11.x));
+        double const bottom = std::min(std::min(p00.y, p10.y), std::min(p01.y, p11.y));
+        double const top = std::max(std::max(p00.y, p10.y), std::max(p01.y, p11.y));
 
-        return !circleTouches(center.x, center.y, radius, margin);
+        return right < g_view.left - margin || left > g_view.right + margin
+            || top < g_view.bottom - margin || bottom > g_view.top + margin;
     }
 
     // ---------------------------------------------------------------------------------------
@@ -447,11 +456,71 @@ namespace {
             && std::fabs(projection.mat[15] - 1.f) < 1e-6f;
     }
 
-    bool stockSpriteProgram(CCSpriteBatchNode* batch) {
+    // Custom shader programs are verified at draw time, with no cross-frame cache: cocos
+    // programs can keep the same handle while their source changes only outside the frame, so
+    // a verdict held across frames could mis-judge a reused handle. The verification itself is
+    // a handful of GL calls per batch, bounded by the number of batches per frame.
+    constexpr GLint kMaxShaderSourceBytes = 8192;
+
+    bool readVertexSource(GLuint program, char* out, GLsizei maxBytes, GLsizei* outLength) {
+#ifdef GEODE_IS_WINDOWS
+        GLsizei count = 0;
+        GLuint shaders[4] = {};
+        glGetAttachedShaders(program, 4, &count, shaders);
+        if (count > 0) {
+            for (GLsizei i = 0; i < count; ++i) {
+                GLint type = 0;
+                glGetShaderiv(shaders[i], GL_SHADER_TYPE, &type);
+                if (type != GL_VERTEX_SHADER) continue;
+                GLint length = 0;
+                glGetShaderiv(shaders[i], GL_SHADER_SOURCE_LENGTH, &length);
+                if (length <= 0 || length > static_cast<GLint>(maxBytes)) {
+                    return false;
+                }
+                glGetShaderSource(shaders[i], maxBytes, nullptr, out);
+                *outLength = length;
+                return true;
+            }
+        }
+        return false;
+#else
+        (void)program; (void)out; (void)maxBytes; (void)outLength;
+        return false;
+#endif
+    }
+
+    // True when the batch's shader program cannot alter vertex positions: it is the stock
+    // PositionTextureColor program, or - on Windows - its vertex stage is byte-identical to the
+    // stock program's vertex stage. That accepts fragment-only effects (the shape of GD's
+    // shader library) but never a shader that could displace geometry, and any doubt fails
+    // open to the original draw.
+    bool verifiablePassthroughProgram(CCSpriteBatchNode* batch) {
         CCGLProgram* program = batch->getShaderProgram();
         if (!program) return false;
         CCShaderCache* cache = CCShaderCache::sharedShaderCache();
-        return cache && program == cache->programForKey(kCCShader_PositionTextureColor);
+        CCGLProgram* stock = cache ? cache->programForKey(kCCShader_PositionTextureColor)
+                                   : nullptr;
+        if (!stock) return false;
+        if (program == stock) return true;
+        if (!reborn::config().customShaderFilter) return false;
+
+#ifdef GEODE_IS_WINDOWS
+        bool ok = false;
+        char custom[kMaxShaderSourceBytes] = {};
+        char stockSource[kMaxShaderSourceBytes] = {};
+        GLsizei lenCustom = -1, lenStock = -1;
+        if (readVertexSource(program->getProgram(), custom,
+                             kMaxShaderSourceBytes, &lenCustom)
+            && readVertexSource(stock->getProgram(), stockSource,
+                                kMaxShaderSourceBytes, &lenStock)
+            && lenCustom == lenStock && lenCustom > 0
+            && std::memcmp(custom, stockSource, static_cast<size_t>(lenCustom)) == 0) {
+            ok = true;
+        }
+        return ok;
+#else
+        return false;
+#endif
     }
 
     // Checks that can be made before the child transform pass. The caller re-checks the quad
@@ -464,7 +533,7 @@ namespace {
         if (batch->m_bManualSortAllChildrenDirty) return false;
         CCGridBase* grid = batch->getGrid();
         if (grid && grid->isActive()) return false;
-        if (!stockSpriteProgram(batch)) return false;
+        if (!verifiablePassthroughProgram(batch)) return false;
         return g_batchScanBudget >= total;
     }
 

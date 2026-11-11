@@ -5,9 +5,9 @@
 	},
 	"id": "ziyyhhk.minimum-reborn",
 	"name": "Minimum Reborn",
-	"version": "v2.4.0",
+	"version": "v2.4.1",
 	"developer": "ziyyhhk",
-	"description": "A rendering-focused rebuild of Minimum. All settings live on the native Geode settings page; the pause menu button opens it. Zero-pixel and off-screen draw fast-outs, per-quad filtering inside batched level objects (the layer GD actually uses), live-particle culling (and optional off-screen simulation suppression), an editor-only culling policy, a GPU frame-time overlay line (GL_TIME_ELAPSED), and a No Additional Input Delay ordering mode that moves all mod bookkeeping behind the game's update. Physics, input handling and the game's FPS cap are never changed. Windows build for Geometry Dash 2.2081.",
+	"description": "A rendering-focused rebuild of Minimum. All settings live on the native Geode settings page; the pause menu button opens it. Zero-pixel and off-screen draw fast-outs, per-quad filtering inside batched level objects - including fragment-only shader effects whose vertex stage is verified byte-identical to the stock pass-through - live-particle culling (and optional off-screen simulation suppression), an editor-only culling policy, a GPU frame-time overlay line (GL_TIME_ELAPSED), and a No Additional Input Delay ordering mode that moves all mod bookkeeping behind the game's update. Physics, input handling and the game's FPS cap are never changed. Windows build for Geometry Dash 2.2081.",
 	"tags": [
 		"performance",
 		"utility"
@@ -104,7 +104,13 @@
 		},
 		"batch-culling": {
 			"name": "Batch Object Filtering",
-			"description": "Filters individual quads inside batched level objects, the path GD actually uses. The batch keeps its single GL draw, its blend state and its atlas order; quads that cannot produce a pixel (GD-hidden objects with zero area, or quads fully outside the clip volume plus a small margin) are left out of the index list. Only the stock level shader is filtered - a custom shader or an active grid always draws untouched. The scan is capped at 24,000 quads per frame and reads the same vertices the original draw would upload. On by default; turn it off to see the unfiltered draw path. Draw-only; nothing is re-batched, reordered or rewritten.",
+			"description": "Filters individual quads inside batched level objects, the path GD actually uses. The batch keeps its single GL draw, its blend state and its atlas order; quads that cannot produce a pixel (GD-hidden objects with zero area, or quads fully outside the clip volume plus a small margin) are left out of the index list. Only the stock level shader is filtered - a custom shader or an active grid always draws untouched, unless you turn on the Custom Shader Filter. The scan is capped at 65,536 quads per frame and reads the same vertices the original draw would upload. On by default; turn it off to see the unfiltered draw path. Draw-only; nothing is re-batched, reordered or rewritten.",
+			"type": "bool",
+			"default": true
+		},
+		"custom-shader-filter": {
+			"name": "Custom Shader Filter",
+			"description": "Also filter batch quads when the batch's program is a fragment-only effect whose vertex stage is byte-identical to the engine's stock PositionTextureColor program (the shape GD's shader library uses; the level is still drawn exactly once). A custom vertex stage that could move vertices is never judged by its original positions, so that batch draws untouched. Resolved per frame on Windows; any doubt falls back to the original draw. On by default; requires Batch Object Filtering. No visual change is intended or claimed - fail-open gates only.",
 			"type": "bool",
 			"default": true
 		},
