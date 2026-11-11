@@ -54,15 +54,16 @@ using namespace geode::prelude;
 // 3. Particle systems
 // ---------------------------------------------------------------------------------------
 // * Idle: no draw at all at zero live particles.
-// * Off-screen: a relative-position system whose worst-case reach (speed * life plus
-//   gravity/radial/tangential acceleration, start/end radius, position variance and particle
-//   size, converted to world units) does not touch the expanded viewport is not drawn. It
-//   still updates, so emission timing, lifetimes and motion are unchanged and it looks the
-//   same when it scrolls back. Free and grouped systems are always drawn: their particles are
-//   not placed relative to the emitter and no safe bound exists.
-// * Center-inside shortcut: if the emitter position itself is inside the view the system is
-//   drawn without computing the reach bound, which keeps the per-frame cost of the common
-//   case to one circle test.
+// * Off-screen: a live particle system whose AABB (measured from the actual particle
+//   positions of this frame, expanded by the largest particle size and the viewport
+//   margin) lies fully outside the visible rect is not drawn. It still updates, so
+//   emission timing, lifetimes and motion are unchanged and it looks the same when it
+//   scrolls back. Covers the Relative and Grouped position types, whose particle
+//   positions live in emitter-local space; the AABB center is mapped to the world with
+//   a rotation-safe circle test, so emitter rotation is handled. Free systems are
+//   always drawn: their particles live in an absolute frame and no transform is safe
+//   to assume. If the emitter itself is on screen the system is drawn without touching
+//   the particle data at all.
 // * Pool cap: clamping the requested pool BEFORE the original initWithTotalParticles runs
 //   means the particle, quad and index buffers are all allocated for the capped size, so no
 //   code can ever index past its buffer. Only affects systems created afterwards.
@@ -73,6 +74,35 @@ using namespace geode::prelude;
 // Culling modes: Conservative keeps a generous margin (default). Aggressive keeps a small
 // one and is meant for checking how much draw work the culling actually removes. Both are
 // draw-only.
+//
+// ---------------------------------------------------------------------------------------
+// 4. Batch culling (the level objects themselves)
+// ---------------------------------------------------------------------------------------
+// Level objects are submitted through CCSpriteBatchNode::draw, one call per batch. This is
+// where the bulk of a level lives, and it was deliberately untouched in every previous
+// release because two failure modes existed. Both are closed here, so the whole-batch skip
+// now ships behind the `batch-culling` switch (default off, opt-in, measurement first):
+//
+//   * "the scan covers fewer entries than draw() submits" - read the real member truth
+//     instead of assuming: drawQuads() submits exactly getTotalQuads() quads (CCTextureAtlas
+//     can draw nothing more), and children added via addSpriteWithoutQuad never got an atlas
+//     slot at all - they draw through their own CCSprite::draw path, which this does not
+//     touch. The scan reads [0, getTotalQuads()) and all four corners of every quad, so the
+//     measured box contains everything the draw would submit.
+//
+//   * "skipping draw() freezes the VBO and the cull becomes self-sustaining" - the engine
+//     marks CCTextureAtlas::m_bDirty when the VBO needs an upload. This hook never skips
+//     while that flag is set (the skipped draw is exactly where the upload happens), nor
+//     while the batch reports m_bManualSortAllChildrenDirty (a pending sort rebuilds the
+//     quad order inside the draw). Only a batch whose buffer is already in sync can be
+//     skipped, and then the next frame is identical to this one.
+//
+// The box scan is also capped: a per-frame budget of 24,000 quads bounds the CPU cost of
+// the feature no matter how big the level is; once the budget is spent, batches are drawn
+// without further testing until the next frame. Empty batches (zero quads) keep the old
+// empty-batch skip, which is unconditional.
+//
+// Only draw() is skipped; visit(), updates, triggers and remove/add logic are untouched.
 //
 // ---------------------------------------------------------------------------------------
 // 6. What "shader culling" can honestly mean here
@@ -120,6 +150,13 @@ namespace {
     unsigned g_frameId = 1;
     std::uint64_t g_frameCreatedBase = 0;
     bool g_editorFrame = false;
+
+    // Batch culling scans every quad in the atlas, which is cheap per quad but could add
+    // up in a level with giant batches. This is the per-frame CPU budget, in quads. Once
+    // it is spent, batches are drawn untested for the rest of the frame - the cost of the
+    // feature is capped no matter how big the scene is.
+    constexpr std::uint64_t kBatchScanBudget = 24000;
+    std::uint64_t g_batchScanBudget = kBatchScanBudget;
 
     // Local -> world mapping of a node: world = origin + x * ux + y * uy.
     struct Basis {
@@ -292,27 +329,18 @@ namespace {
         );
     }
 
-    struct Bounds {
-        double speed = 0.0;
-        double life = 0.0;
-        double accel = 0.0;
-        double radius = 0.0;
-        double posVar = 0.0;
-        double source = 0.0;
-        double size = 0.0;
-    };
-
-    // Worst-case distance a particle can travel from the emitter, in local units.
-    double particleReach(Bounds const& b) {
-        double const life = std::max(0.0, b.life);
-        double const flight = b.speed * life + 0.5 * b.accel * life * life + b.radius;
-        double const spread = b.posVar + b.source + b.size * 0.5;
-        return flight + spread;
-    }
-
-    // True when a relative-position system cannot paint anything inside the expanded view.
+    // True when a particle system whose particles live in emitter-local space cannot paint
+    // anything inside the expanded view. Covers Relative and Grouped; Free systems are left
+    // alone (their particles are in an absolute frame and no transform is safe to assume).
+    //
+    // The bound is measured from the actual particle positions this draw will submit - the
+    // same data a few calls later, with no time in between - so the test is exact, not a
+    // worst case. The local AABB is expanded by each particle's own size; the center is
+    // mapped to the world as a circle (rotation-safe for any emitter rotation) and scaled
+    // by the emitter's and its parents' scales. Any doubt answers "draw".
     bool particleOffScreen(CCParticleSystemQuad* system, double margin) {
-        if (system->getPositionType() != kCCPositionTypeRelative) return false;
+        tCCPositionType const type = system->getPositionType();
+        if (type != kCCPositionTypeRelative && type != kCCPositionTypeGrouped) return false;
 
         CCNode* parent = system->getParent();
         if (!parent) return false;
@@ -331,31 +359,106 @@ namespace {
         // This keeps the per-frame cost of visible systems to one circle test.
         if (circleTouches(world.x, world.y, 0.0, margin)) return false;
 
-        CCPoint const& gravity = system->getGravity();
-        CCPoint const& source = system->getSourcePosition();
-        CCPoint const& posVar = system->getPosVar();
+        unsigned int const count = system->m_uParticleCount;
+        if (count == 0) return false;  // idle systems go through the idle skip, never through a cull
+        tCCParticle const* particles = system->m_pParticles;
+        if (!particles) return false;
 
-        Bounds bounds;
-        bounds.speed = std::fabs(system->getSpeed()) + std::fabs(system->getSpeedVar());
-        bounds.life = std::fabs(system->getLife()) + std::fabs(system->getLifeVar());
-        bounds.accel = std::hypot(gravity.x, gravity.y)
-                     + std::fabs(system->getRadialAccel()) + std::fabs(system->getRadialAccelVar())
-                     + std::fabs(system->getTangentialAccel()) + std::fabs(system->getTangentialAccelVar());
-        bounds.radius = std::max(
-            std::fabs(system->getStartRadius()) + std::fabs(system->getStartRadiusVar()),
-            std::fabs(system->getEndRadius()) + std::fabs(system->getEndRadiusVar())
-        );
-        bounds.posVar = std::hypot(posVar.x, posVar.y);
-        bounds.source = std::hypot(source.x, source.y);
-        bounds.size = std::max(
-            std::fabs(system->getStartSize()) + std::fabs(system->getStartSizeVar()),
-            std::fabs(system->getEndSize()) + std::fabs(system->getEndSizeVar())
-        );
+        double minX = 0.0, maxX = 0.0, minY = 0.0, maxY = 0.0;
+        for (unsigned int i = 0; i < count; ++i) {
+            CCPoint const& pos = particles[i].pos;
+            float const size = particles[i].size;
+            if (!isFinite(pos.x) || !isFinite(pos.y) || !isFinite(size)) return false;
 
-        double const reach = particleReach(bounds) * scale;
-        if (!std::isfinite(reach)) return false;
+            float const pad = size > 0.f ? size * 0.5f : 0.f;
+            double const x0 = static_cast<double>(pos.x) - pad;
+            double const x1 = static_cast<double>(pos.x) + pad;
+            double const y0 = static_cast<double>(pos.y) - pad;
+            double const y1 = static_cast<double>(pos.y) + pad;
+            if (i == 0) {
+                minX = x0; maxX = x1; minY = y0; maxY = y1;
+            } else {
+                minX = std::min(minX, x0); maxX = std::max(maxX, x1);
+                minY = std::min(minY, y0); maxY = std::max(maxY, y1);
+            }
+        }
 
-        return !circleTouches(world.x, world.y, reach, margin);
+        double const centerLocalX = (minX + maxX) * 0.5;
+        double const centerLocalY = (minY + maxY) * 0.5;
+        double const width = maxX - minX;
+        double const height = maxY - minY;
+        double const radiusLocal = std::sqrt(width * width + height * height) * 0.5;
+        if (!std::isfinite(radiusLocal)) return false;
+
+        CCPoint const center = toWorld(basis, ccp(
+            static_cast<float>(centerLocalX), static_cast<float>(centerLocalY)
+        ));
+        double const radius = radiusLocal * scale;
+
+        return !circleTouches(center.x, center.y, radius, margin);
+    }
+
+    // True when every quad in a batch's vertex buffer lies entirely outside the expanded
+    // view, so the batch's single GL submission can be skipped. Only called when the atlas
+    // is in sync (not dirty, no pending child sort) and the scan budget allows; anything
+    // unexpected answers "draw". Quad positions live in the batch node's local space, so
+    // the local box is mapped through the batch's own world basis as a circle.
+    constexpr double kBatchMargin = 64.0;
+
+    bool batchOffScreen(CCSpriteBatchNode* batch, double margin) {
+        CCTextureAtlas* atlas = batch->getTextureAtlas();
+        if (!atlas) return false;
+        unsigned int const total = atlas->getTotalQuads();
+        if (total == 0) return false;  // empty batches use the empty-batch skip
+        if (atlas->isDirty()) return false;  // the skipped draw is where the VBO upload happens
+        if (batch->m_bManualSortAllChildrenDirty) return false;  // a pending sort rebuilds the buffer inside draw()
+        if (g_batchScanBudget == 0) return false;
+
+        ccV3F_C4B_T2F_Quad const* quads = atlas->getQuads();
+        if (!quads) return false;
+
+        double minX = 0.0, maxX = 0.0, minY = 0.0, maxY = 0.0;
+        for (unsigned int i = 0; i < total; ++i) {
+            if (g_batchScanBudget == 0) return false;  // budget spent: draw untested, claim nothing
+            --g_batchScanBudget;
+
+            ccV3F_C4B_T2F_Quad const& quad = quads[i];
+            float const xs[4] = {
+                quad.tl.vertices.x, quad.bl.vertices.x, quad.tr.vertices.x, quad.br.vertices.x
+            };
+            float const ys[4] = {
+                quad.tl.vertices.y, quad.bl.vertices.y, quad.tr.vertices.y, quad.br.vertices.y
+            };
+            for (int v = 0; v < 4; ++v) {
+                if (!isFinite(xs[v]) || !isFinite(ys[v])) return false;
+            }
+            for (int v = 0; v < 4; ++v) {
+                double const x = xs[v];
+                double const y = ys[v];
+                if (i == 0 && v == 0) {
+                    minX = maxX = x; minY = maxY = y;
+                } else {
+                    minX = std::min(minX, x); maxX = std::max(maxX, x);
+                    minY = std::min(minY, y); maxY = std::max(maxY, y);
+                }
+            }
+        }
+
+        double const centerLocalX = (minX + maxX) * 0.5;
+        double const centerLocalY = (minY + maxY) * 0.5;
+        double const width = maxX - minX;
+        double const height = maxY - minY;
+        double const radiusLocal = std::sqrt(width * width + height * height) * 0.5;
+        if (!std::isfinite(radiusLocal)) return false;
+
+        Basis basis;
+        if (!basisOf(batch, basis)) return false;
+        double const radius = radiusLocal * basisScale(basis);
+        CCPoint const center = toWorld(basis, ccp(
+            static_cast<float>(centerLocalX), static_cast<float>(centerLocalY)
+        ));
+
+        return !circleTouches(center.x, center.y, radius, margin);
     }
 
     // Hot-path counters.
@@ -381,6 +484,7 @@ namespace {
         std::uint64_t batchDraws = 0;
         std::uint64_t batchQuads = 0;
         std::uint64_t emptyBatches = 0;
+        std::uint64_t batchCulled = 0;
     };
 
     HotCounts g_hot;
@@ -397,6 +501,7 @@ namespace {
         bool particleIdle = false;
         bool particleCull = false;
         bool editor = false;
+        bool batchCull = false;
         double sceneMargin = 160.0;
         double editorMargin = 160.0;
         double particleMargin = 128.0;
@@ -443,17 +548,22 @@ namespace reborn {
                               || c.sceneCull != CullMode::Off
                               || (c.cullOffscreenParticles && c.particleCull != CullMode::Off)
                               || c.skipIdleParticles
-                              || (c.editorCulling && c.editorCull != CullMode::Off));
+                              || (c.editorCulling && c.editorCull != CullMode::Off)
+                              || c.batchCulling);
             g_flags.spriteFastPath = on && c.spriteFastPath;
             g_flags.sceneCull = on && c.sceneCull != CullMode::Off;
             g_flags.editorCull = on && c.editorCulling && c.editorCull != CullMode::Off;
             g_flags.particleIdle = on && c.skipIdleParticles;
             g_flags.particleCull = on && c.cullOffscreenParticles && c.particleCull != CullMode::Off;
+            g_flags.batchCull = on && c.batchCulling;
             g_flags.sceneMargin = c.sceneCullMargin;
             g_flags.editorMargin = c.editorCullMargin;
             g_flags.particleMargin = c.particleCullMargin;
         }
         g_frameCreatedBase = counters().particleSystemsCreated.load(std::memory_order_relaxed);
+        // Each frame gets a fresh batch-scan budget; the previous frame's spend does not
+        // carry over, so one huge level cannot starve the next.
+        g_batchScanBudget = kBatchScanBudget;
         // One cheap scene check per frame, shared by every draw hook. The editor is a
         // separate scene from PlayLayer; both use the same draw hooks, so the culling
         // policy is selected here rather than by installing editor-only hooks.
@@ -499,6 +609,7 @@ namespace reborn {
         add(c.batchDraws, g_hot.batchDraws);
         add(c.batchQuads, g_hot.batchQuads);
         add(c.emptyBatchDrawsSkipped, g_hot.emptyBatches);
+        add(c.batchCulls, g_hot.batchCulled);
     }
 
     unsigned int effectiveParticleCap();  // defined in config.cpp (adaptive step included)
@@ -514,7 +625,8 @@ namespace reborn {
             return cfg.editorCulling && cfg.editorCull != CullMode::Off;
         }
         return cfg.sceneCull != CullMode::Off
-            || (cfg.cullOffscreenParticles && cfg.particleCull != reborn::CullMode::Off);
+            || (cfg.cullOffscreenParticles && cfg.particleCull != reborn::CullMode::Off)
+            || cfg.batchCulling;
     }
 }
 
@@ -576,10 +688,11 @@ struct SpriteDrawFastPath : Modify<SpriteDrawFastPath, CCSprite> {
     }
 };
 
-// Telemetry for the path GD actually uses for level objects. CCSpriteBatchNode draws all of
-// its children in one submission and never calls CCSprite::draw for them, so the per-sprite
-// counters above describe unbatched sprites only. Counting batches and their quads here shows
-// how much of the scene is batched (and therefore already outside the per-sprite hook).
+// Telemetry for the path GD actually uses for level objects, plus the batch cull: the one
+// skip in this file that can remove a whole level-object GL submission. Off by default
+// (the `batch-culling` setting); when on, only a batch whose atlas buffer is in sync and
+// whose entire vertex box lies outside the expanded view is skipped. Only draw() is
+// skipped; visit(), updates, triggers and adding/removing objects are untouched.
 struct BatchNodeTelemetry : Modify<BatchNodeTelemetry, CCSpriteBatchNode> {
     void draw() {
         if (g_flags.any) {
@@ -592,6 +705,12 @@ struct BatchNodeTelemetry : Modify<BatchNodeTelemetry, CCSpriteBatchNode> {
                 // no pixels and no state anyone reads afterwards (draw(), not visit()).
                 if (quads == 0) {
                     ++g_hot.emptyBatches;
+                    return;
+                }
+                // The level-object path. The cull fails open: a dirty atlas buffer, a
+                // pending child sort, a bad vertex or an exhausted scan budget all draw.
+                if (g_flags.batchCull && batchOffScreen(this, kBatchMargin)) {
+                    ++g_hot.batchCulled;
                     return;
                 }
             }

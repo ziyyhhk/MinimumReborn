@@ -34,6 +34,7 @@ namespace reborn {
         std::uint64_t g_baseLogicOnly = 0;
         std::uint64_t g_baseBatchDraws = 0;
         std::uint64_t g_baseBatchQuads = 0;
+        std::uint64_t g_baseBatchCulls = 0;
 
         char const* cullShort(CullMode mode) {
             switch (mode) {
@@ -58,9 +59,10 @@ namespace reborn {
 
         std::snprintf(
             g_result.mode, sizeof(g_result.mode),
-            "renderer %s, scene %s, particles %s",
+            "renderer %s, scene %s, particles %s, batch cull %s",
             cfg.rendererOptimized ? "optimized" : "engine",
-            cullShort(cfg.sceneCull), cullShort(cfg.particleCull)
+            cullShort(cfg.sceneCull), cullShort(cfg.particleCull),
+            cfg.batchCulling ? "on" : "off"
         );
 
         auto& counters = reborn::counters();
@@ -74,6 +76,7 @@ namespace reborn {
         g_baseLogicOnly = counters.framesLogicOnly.load(std::memory_order_relaxed);
         g_baseBatchDraws = counters.batchDraws.load(std::memory_order_relaxed);
         g_baseBatchQuads = counters.batchQuads.load(std::memory_order_relaxed);
+        g_baseBatchCulls = counters.batchCulls.load(std::memory_order_relaxed);
 
         g_summary[0] = '\0';
         log::info("Minimum Reborn: benchmark started ({:.0f} s, {})", g_window, g_result.mode);
@@ -149,6 +152,7 @@ namespace reborn {
         g_result.avgDrawMs = g_drawSum / static_cast<double>(g_count);
         g_result.batchDraws = counters.batchDraws.load(std::memory_order_relaxed) - g_baseBatchDraws;
         g_result.batchQuads = counters.batchQuads.load(std::memory_order_relaxed) - g_baseBatchQuads;
+        g_result.batchCulls = counters.batchCulls.load(std::memory_order_relaxed) - g_baseBatchCulls;
         g_result.sceneCulled = sceneCulled;
         g_result.particleSkipped = particleSkipped;
         g_result.spriteSkipped = spriteSkipped;
@@ -169,13 +173,14 @@ namespace reborn {
         log::info(
             "Minimum Reborn: benchmark {} - {} drawn frames in {:.1f} s, avg {:.2f} ms (p50 {:.2f}, p95 {:.2f}), "
             "1% low {:.0f} fps, variability {:.2f} ms, draw {:.2f} ms | scene culled {}/{} | particles skipped {}/{} | "
-            "invisible sprites {} | batches {} ({} quads) | {}",
+            "invisible sprites {} | batches {} ({} quads, {} culled) | {}",
             g_result.mode, g_result.frames, seconds, g_result.avgFrameMs, g_result.p50FrameMs,
             g_result.p95FrameMs, g_result.onePercentLowFps, g_result.variabilityMs, g_result.avgDrawMs,
             static_cast<unsigned long long>(sceneCulled), static_cast<unsigned long long>(sceneExamined),
             static_cast<unsigned long long>(particleSkipped), static_cast<unsigned long long>(particleExamined),
             static_cast<unsigned long long>(spriteSkipped),
             static_cast<unsigned long long>(g_result.batchDraws), static_cast<unsigned long long>(g_result.batchQuads),
+            static_cast<unsigned long long>(g_result.batchCulls),
             g_summary
         );
     }

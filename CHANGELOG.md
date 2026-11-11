@@ -1,5 +1,43 @@
 # Changelog
 
+## v2.0.0 (2026-11-11)
+
+The two features this project had been circling since v1.5.0, both implemented fail-open and
+measured by construction. Nothing here changes physics, timing, input handling, draw order,
+blending, shaders or glow.
+
+* **Whole-batch visibility culling** (`batch-culling`, bool, default off; on in Performance and
+  Extreme). A `CCSpriteBatchNode` whose full vertex buffer lies outside the viewport plus 64
+  world units no longer pays its single GL draw. The two failure modes that got this feature
+  removed in v1.5.1 are closed by construction: the scan covers exactly `[0, getTotalQuads())`
+  (the atlas cannot submit more), and the skip never fires while `CCTextureAtlas` reports its
+  buffer dirty (`isDirty()`) or while a child sort is pending
+  (`m_bManualSortAllChildrenDirty`) - both rebuild inside the skipped `draw()`, so both answer
+  "draw". The local AABB of every quad is converted to a rotation-invariant circle mapped
+  through the batch's world basis. A per-frame scan budget of 24,000 quads caps the CPU cost
+  of the feature; once spent, batches draw untested. Counted in the new `batchCulls` counter,
+  shown on the Detailed overlay, on the Culling page ("empty / culled / drawn"), in the "Work
+  avoided" row and in the benchmark line. This is the one feature that can remove draw
+  submissions for the bulk of a level.
+* **Particle culling now measures live particle data.** The old reach-cone bound could only
+  reject a system when every *possible* future position was off screen, which is rarely true.
+  The cull now computes the AABB of the particles this frame actually holds (from
+  `m_pParticles`, expanded by particle size), converts the center to a rotation-invariant
+  circle through the emitter's world basis, and compares against the expanded viewport.
+  Relative and Grouped systems are both covered - both live in emitter-local space. Emitter
+  on-screen still costs one circle test. Free systems are always drawn (absolute frame, no safe
+  transform). The test is exact to the data the draw will submit a few calls later, so there is
+  no "worst-case" margin to guess.
+* **Counters and UI**: new `batchCulls` counter (total); the Culling page batch row shows
+  `empty / culled / drawn`; the Detailed overlay prints the batch-cull total; "Work avoided"
+  counts batch culls; the benchmark result line reports `batches N (M quads, K culled)` and
+  records the mode with `batch cull on/off`; Performance and Extreme set `batch-culling`.
+* **Versioning**: v2.0.0 because it is a new line of work, and because a GitHub release of
+  "v1.0.0" would sort below every release this repo has produced.
+* **Not done, honestly**: no in-game measurement of v2.0.0 exists. The geometry is argued from
+  the cocos2d-x 2.2 headers (which is why the skip is bounded and fail-open), but this build
+  has not been launched; the owner runs the first test. No FPS gain is claimed.
+
 ## v1.6.2 (2026-10-30)
 
 Found by a read-only audit of the panel, not by playing. Two controls were dead.

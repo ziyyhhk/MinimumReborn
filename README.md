@@ -4,15 +4,16 @@ A rendering-focused optimization mod for Geometry Dash 2.2081, built with C++20 
 Geode SDK. It is a successor to [Minimum](https://github.com/ziyyhhk/Minimum), with the
 render path as the main subject rather than a settings collection.
 
-**Status: v1.6.2, built by GitHub Actions and installed.** The measured runtime evidence in this
+**Status: v2.0.0.** The measured runtime evidence in this
 README and in `DEVELOPMENT_REPORT.md` - the Engine vs Optimized A/B table and the skip counts -
 comes from earlier in-game runs on a Windows laptop, not from estimates. What has *not* been run
-in-game here is v1.5.x and v1.6.0: those were built by CI and installed, but not launched or
-played (the owner tests them), so no FPS or latency number is claimed for the newest features
-(see section 13). The measurements did change the design: GD batches its level objects, so the
-per-sprite scene cull cannot see them. Scene culling is opt-in and off in the default profile,
-and this file says so. See section 9 for the measured Engine vs Optimized A/B and for what the
-draw path actually avoids.
+in-game here is v1.5.x, v1.6.x and now v2.0.0: those were built by CI and installed, but not launched
+or played (the owner tests them), so no FPS or latency number is claimed for the newest features
+(v2.0.0's whole-batch cull and the rebuilt particle cull are argued from the cocos2d-x 2.2
+headers and ship fail-open with counters; see sections 13 and 14). The measurements did change
+the design: GD batches its level objects, so the per-sprite scene cull cannot see them. Scene
+culling is opt-in and off in the default profile, and this file says so. See section 9 for the
+measured Engine vs Optimized A/B and for what the draw path actually avoids.
 
 ## What it does
 
@@ -54,12 +55,15 @@ on by default would only add checks with no measured saving, so Balanced now lea
 
 * **Idle systems.** `CCParticleSystemQuad::draw` binds a texture and submits a draw even with
   zero live particles. Idle systems are skipped. Simulation is not touched.
-* **Off-screen systems.** A relative-position system whose worst-case reach (speed × life,
-  acceleration, start/end radius, position variance, particle size, scaled to world units)
-  does not touch the expanded viewport is not drawn. It still updates, so emission timing and
-  motion are unchanged when it returns. Free and grouped systems are never culled because no
-  safe bound exists for them. If the emitter itself is on screen the reach bound is not
-  computed at all: one circle test decides.
+* **Off-screen systems.** A live system whose particle AABB does not touch the expanded
+  viewport is not drawn. The box is measured every frame from the actual particle positions
+  (`m_pParticles`), expanded by each particle's size; the local center is mapped to the world as
+  a rotation-invariant circle through the emitter's basis. Relative and Grouped systems
+  (both live in emitter-local space) are covered. It still updates, so emission timing and
+  motion are unchanged when it returns. Free systems are drawn as before - their absolute frame
+  has no transform safe to assume. If the emitter itself is on screen the particle data is not
+  scanned at all: one circle test decides. (v2.0.0 rebuilt this from the cocos2d-x 2.2
+  headers; the previous worst-case reach cone could rarely cull anything.)
 * **Measured:** Stereo Madness exposes **one particle system per frame** to the hook and it
   stayed on screen for all 601 frames, so 0 draws were skipped. The hook and its counters are
   exercised; this level simply has no off-screen effects. Effect-heavy levels are where the
@@ -156,7 +160,9 @@ These were considered and deliberately left out rather than faked:
 * **Replacing GD's batching.** GD already draws level objects through `CCSpriteBatchNode`
   layers (measured above). Merging those batches across textures would require reordering
   translucent objects and rebuilding texture atlases; a partial version that silently changes
-  draw order was judged more dangerous than valuable. Bismuth (GPL-3.0-or-later, with an
+  draw order was judged more dangerous than valuable. A whole-**batch** visibility skip *did*
+  ship in v2.0.0 (see section 14) - it drops a batch only when its own buffer is in sync and
+  entirely off screen, never reorders or rewrites anything. Bismuth (GPL-3.0-or-later, with an
   additional restriction on generative-AI level generation/modification) was studied only as
   a design reference; **no Bismuth code, shaders or assets are used here.**
 * **Dynamic resolution / render scale.** Cocos2d-x 2.2 in this game exposes no safe
@@ -175,12 +181,12 @@ Profiles (`Custom`, `Default`, `Balanced`, `Performance`, `Extreme`) write their
 the individual settings once; editing any setting switches the profile to Custom. `Balanced`
 is the default. A profile also selects the renderer mode and both cull modes:
 
-| Profile | Renderer | Scene cull | Particle cull | Particle cap | Background FPS |
-|---|---|---|---|---|---|
-| Default | Engine | Off | Off | 256 | 20 |
-| Balanced | Optimized | Off | Conservative | 128 | 20 |
-| Performance | Optimized | Conservative | Conservative | 64 | 15 |
-| Extreme | Optimized | Aggressive | Aggressive | 32 | 10 |
+| Profile | Renderer | Scene cull | Particle cull | Batch cull | Particle cap | Background FPS |
+|---|---|---|---|---|---|---|
+| Default | Engine | Off | Off | Off | 256 | 20 |
+| Balanced | Optimized | Off | Conservative | Off | 128 | 20 |
+| Performance | Optimized | Conservative | Conservative | On | 64 | 15 |
+| Extreme | Optimized | Aggressive | Aggressive | On | 32 | 10 |
 
 The full list is in `mod.json` and appears in Geode's native settings page, which also
 provides reset. The pause menu has a compact panel with the same features, live numbers,
@@ -261,8 +267,9 @@ Runtime evidence (this laptop, details and numbers above):
   level; it was not exercised with a non-zero cull count in GD.
 * The skip paths are written to fail open. If the viewport snapshot is missing or
   non-finite, every visibility test answers "draw". A sprite is rejected only when its whole
-  quad is outside the expanded viewport; a particle system only when it is relative-positioned
-  and its worst-case reach misses the expanded viewport. Idle-system and zero-pixel skips can
+  quad is outside the expanded viewport; a particle system only when it is Relative or Grouped
+  and its live-particle AABB misses the expanded viewport; a batch only when its quad buffer is
+  in sync and entirely outside it. Idle-system and zero-pixel skips can
   only fire where the original draw would submit geometry covering no pixels.
 
 ### Benchmark procedure
@@ -415,10 +422,11 @@ path this mod touches.
 
 ## 11. v1.5.0 - reaching the batched path
 
-> **Superseded:** the whole-batch culling this section describes was added in v1.5.0 and
+> **Superseded twice:** the whole-batch culling this section describes was added in v1.5.0 and
 > **removed in v1.5.1** after review found two ways it could hide an entire batch permanently
-> (section 12 and `SHADER_CULLING.md` §8). Only the empty-batch skip remains; there is no batch
-> culling setting, counter or panel control. Read this section as the history of the attempt.
+> (section 12 and `SHADER_CULLING.md` §8). v2.0.0 then re-implemented it with both failure
+> modes closed by construction, behind the `batch-culling` setting; see section 14. Read this
+> section as the history of the first attempt.
 
 The measured history of this mod kept hitting the same wall: GD submits level objects through
 `CCSpriteBatchNode`, which draws all of its children in one call and never runs
@@ -502,8 +510,58 @@ statements about Reborn remain accurate.
 
 **Still unverified for these docs.** v1.5.x and v1.6.0 were built by CI and installed, but not
 launched or played here (the owner asked for code work and will test). No measured FPS or latency
-number exists for the new `glFinish` mode. The batched level-object path is untouched since v1.5.1.
+number exists for the new `glFinish` mode. The batched level-object path was untouched until
+v2.0.0 (see section 14); v2.0.0 has likewise not been launched yet.
 And the project remains Windows-only in its metadata (`mod.json` declares `win` only) even though
 the original Minimum ships for mac/android/ios. As always, Bismuth (GPL-3.0-or-later, with an added
 clause banning its use to facilitate AI-driven GD level generation or modification) is a design
 reference only - **no Bismuth code, shaders or assets are used here.**
+
+## 14. v2.0.0 - the batched path, done safely, and a particle cull that sees real data
+
+The two things this project kept circling are now in the build, both fail-open and both
+measured by construction.
+
+**The whole-batch cull** (`batch-culling`, bool, **off by default**, on in Performance and
+Extreme). GD submits the level through `CCSpriteBatchNode::draw` — one GL call per batch, ~35
+batch draws per frame in Stereo Madness — and never runs `CCSprite::draw` for those objects.
+When a whole batch's vertex buffer lies outside the viewport plus 64 world units, the hook
+returns before the original draw: the program activation, the texture bind and the draw call
+itself are all saved. The two failure modes that killed v1.5.0's version are closed with the
+engine's own truth instead of assumptions:
+
+1. "The scan measures less than `draw()` submits" — it cannot. The atlas draws
+   `getTotalQuads()` quads and nothing else; children registered with `addSpriteWithoutQuad`
+   never got an atlas slot and go through their own `CCSprite::draw` path, which this does not
+   touch. The scan reads every corner of `[0, total)` and any missing/non-finite data answers
+   "draw".
+2. "Skipping freezes the VBO and the cull sustains itself" — it cannot. The hook never skips a
+   batch whose `CCTextureAtlas::isDirty()` is set (the skipped draw is exactly where the VBO
+   upload happens) nor one whose `m_bManualSortAllChildrenDirty` is pending (a sort rebuilds the
+   buffer inside the draw). Skipping only ever happens when the buffer that will be drawn is
+   byte-identical to the one the previous frame used.
+
+A per-frame scan budget of 24,000 quads caps the CPU cost of the feature — past the budget,
+batches draw untested. The margin is 64 world units on top of the viewport. Only `draw()` is
+skipped; `visit()`, updates, triggers and object add/remove are untouched. It is counted in its
+own `batchCulls` counter and shown: Detailed overlay, Culling page ("empty / culled / drawn"),
+"Work avoided", and the benchmark line (`batches N (M quads, K culled)`).
+
+**The particle cull** now measures *live particle data* instead of a worst-case reach cone.
+Every frame it reads the emitter-local positions the draw will submit from `m_pParticles`,
+expands them by particle size, and tests the resulting AABB — mapped to the world as a
+rotation-invariant circle — against the viewport. Relative and Grouped systems are both
+covered. The old cone could only cull when every possible future position was off screen; the
+new test culls exactly when no particle is visible now. Free systems (absolute frame) remain
+always-drawn. The emitter-on-screen shortcut still costs one circle test.
+
+**Profiles**: Performance and Extreme turn `batch-culling` on; Balanced keeps it off, as before
+for the per-sprite scene cull.
+
+**Not measured**: v2.0.0 has not been launched. The design is argued from the cocos2d-x 2.2
+headers this binary was built against — which is why the skip is bounded and fails open — but
+nobody has watched a level render through it yet. The counter to check on the first run is
+`batches` on the Culling page: `K culled` should move only when chunks are actually off screen,
+and the level must look intact. If it does not, turn `batch-culling` off; the rest of the mod is
+unchanged. No FPS gain is claimed for it; the claim is that off-screen level chunks stop paying
+their submission, plus the physics/inputs/cap claim that holds for every version of this mod.

@@ -42,6 +42,10 @@ namespace reborn {
         bool cullOffscreenParticles = true;
         CullMode particleCull = CullMode::Conservative;
         CullMode sceneCull = CullMode::Conservative;
+        // Whole-batch visibility cull: skips a level object batch's single GL draw when
+        // its entire vertex box is outside the view and its buffer is already in sync.
+        // Draw-only. Opt-in; the engine-level write-up is in rendering.cpp section 4.
+        bool batchCulling = false;
         double particleCullMargin = 96.0;   // world units kept around the viewport
         double sceneCullMargin = 128.0;
         bool capParticles = true;
@@ -111,10 +115,12 @@ namespace reborn {
         std::atomic<std::uint64_t> particleSystemsExamined{0};
 
         // Batch-node telemetry. GD renders level objects through CCSpriteBatchNode, so these
-        // counts show how much of the scene actually reaches the per-sprite hook.
+        // counts show how much of the scene actually reaches the per-sprite hook. batchCulls
+        // counts whole batches skipped by the opt-in batch cull.
         std::atomic<std::uint64_t> batchDraws{0};
         std::atomic<std::uint64_t> batchQuads{0};
         std::atomic<std::uint64_t> emptyBatchDrawsSkipped{0};
+        std::atomic<std::uint64_t> batchCulls{0};
 
         // Editor-only culling. Kept apart from the gameplay counters so a claim about editor
         // behavior can be checked on its own.
