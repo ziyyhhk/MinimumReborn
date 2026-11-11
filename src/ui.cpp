@@ -18,25 +18,24 @@
 
 using namespace geode::prelude;
 
-// User interface, v1.4.
+// Minimum Reborn panel. Design: DESIGN.md declares the system (palette roles, type,
+// spacing, radii); this file implements it. Banner comments and ALL-CAPS section markers
+// were removed in the rebuild; the reasons below are the ones a reader needs.
 //
-//   * Header: the MK icon, the title, a subtitle, the active profile and the close button.
-//   * Six tabs that only exist because each one controls something real:
-//       Overview   live numbers, profiles, master switch, benchmark
-//       Render     renderer mode, sprite fast-out, particle pool controls
-//       Culling    gameplay particle/scene culling and their counters
-//       Input      No Additional Input Delay and the Windows timing options
-//       Editor     editor-only culling, its counters and its limits
-//       Diagnostics overlay options and the detailed counters
-//   * Every visible button is a CCMenuItemSpriteExtra with a real callback. Selecting a
-//     tab rebuilds only the content card; it installs a fresh menu and never stacks
-//     duplicate callbacks on an existing item.
-//   * Every control is built from one spacing scale (see the layout constants) and the
-//     pill backgrounds use GD's own nine-slice with cap insets derived from the texture the
-//     engine actually loads. No per-frame nodes and no animations.
-//
-// The popup reads and writes the same settings the native Geode page uses, through the
-// cached snapshot. It never changes physics, input handling or the game's FPS cap.
+//   * Header: logo, sentence-case title, one sentence-case subtitle, one status pill with
+//     the real profile. No caps micro-labels.
+//   * Six tabs, equal measured columns, never clip; active tab keeps full opacity and an
+//     accent underline.
+//   * Profiles are one segmented control, not loose pills.
+//   * Toggles are a custom checkbox component (accent fill + dark check on surface).
+//   * Telemetry rows: label left, value right on a shared baseline, one hairline between
+//     rows; every value comes from a real counter.
+//   * Button roles: primary (accent fill) is Benchmark; secondary is surface fill; ghost is
+//     transparent muted text. Every item press routes through CCMenuItemSpriteExtra, so the
+//     game supplies the press animation; GD panels have no global focus model, so focus
+//     rings are omitted rather than faked (Escape closes the panel instead).
+//   * The popup reads and writes the same settings the native Geode page uses. It never
+//     changes physics, input handling or the game's FPS cap.
 
 namespace {
 
@@ -56,9 +55,8 @@ namespace {
         }
     }
 
-    // ---------------------------------------------------------------------------------
-    // Performance overlay
-    // ---------------------------------------------------------------------------------
+    // Performance overlay. Numbers only; color carries no meaning except the "(OFF)" marker,
+    // so the palette stays inside DESIGN.md's cap.
     class StatsHud : public CCNode {
     protected:
         CCLabelBMFont* m_label = nullptr;
@@ -71,8 +69,8 @@ namespace {
             m_label = CCLabelBMFont::create("Minimum Reborn", "chatFont.fnt");
             if (!m_label) return false;
             this->addChild(m_label);
-            this->applyLayout();
             this->schedule(schedule_selector(StatsHud::tick), 0.25f);
+            this->applyLayout();
             return true;
         }
 
@@ -82,7 +80,7 @@ namespace {
             bool const right = cfg.overlayCorner == reborn::Corner::TopRight
                             || cfg.overlayCorner == reborn::Corner::BottomRight;
             bool const bottom = cfg.overlayCorner == reborn::Corner::BottomLeft
-                              || cfg.overlayCorner == reborn::Corner::BottomRight;
+                             || cfg.overlayCorner == reborn::Corner::BottomRight;
 
             if (right != m_right) {
                 m_label->setAlignment(right ? kCCTextAlignmentRight : kCCTextAlignmentLeft);
@@ -96,6 +94,7 @@ namespace {
             });
             m_label->setScale(cfg.overlayScale);
             m_label->setOpacity(cfg.overlayOpacity);
+            m_label->setColor(ccc3(238, 241, 248));
             m_label->setVisible(cfg.showOverlay && cfg.enabled);
         }
 
@@ -158,19 +157,6 @@ namespace {
                 m_lastText = text;
                 m_label->setString(text);
             }
-
-            if (fps == 0) {
-                m_label->setColor(ccc3(235, 235, 235));
-            }
-            else if (static_cast<double>(fps) >= cfg.targetFps * 0.95) {
-                m_label->setColor(ccc3(120, 255, 120));
-            }
-            else if (static_cast<double>(fps) >= cfg.targetFps * 0.75) {
-                m_label->setColor(ccc3(255, 225, 90));
-            }
-            else {
-                m_label->setColor(ccc3(255, 100, 100));
-            }
         }
 
     public:
@@ -187,29 +173,28 @@ namespace {
 
     bool g_hudCreated = false;
 
-    // ---------------------------------------------------------------------------------
-    // Shared visual helpers
-    // ---------------------------------------------------------------------------------
-    // One spacing system for the whole panel. Every row, tab and button is placed from
-    // these numbers, so the header, nav, content and footer share margins and baselines.
-    constexpr float kPopupWidth = 400.f;
-    constexpr float kPopupHeight = 240.f;
-    constexpr float kMargin = 18.f;
-    constexpr float kHeaderH = 34.f;
-    constexpr float kNavH = 26.f;
-    constexpr float kFooterH = 28.f;
-    constexpr float kRowPitch = 21.f;
-    constexpr float kButtonHeight = 20.f;
-    constexpr float kGap = 5.f;
-    constexpr float kIconSize = 26.f;
+    // DESIGN.md tokens. The palette stays inside the 2-3 cores + 1 accent cap; semantic
+    // green exists only for the "mod enabled" toggle state and appears nowhere else.
+    ccColor3B const kSurface = ccc3(31, 35, 51);
+    ccColor3B const kHairline = ccc3(43, 48, 70);
+    ccColor3B const kText = ccc3(238, 241, 248);
+    ccColor3B const kMuted = ccc3(166, 174, 199);
+    ccColor3B const kAccent = ccc3(139, 92, 246);
+    ccColor3B const kOnAccent = ccc3(18, 20, 28);
+    ccColor3B const kGood = ccc3(52, 209, 123);
+
+    constexpr float kPopupWidth = 680.f;
+    constexpr float kPopupHeight = 400.f;
+    constexpr float kMargin = 22.f;
+    constexpr float kHeaderH = 52.f;
+    constexpr float kNavH = 34.f;
+    constexpr float kFooterH = 44.f;
+    constexpr float kRowPitch = 40.f;
+    constexpr float kButtonHeight = 30.f;
+    constexpr float kIconSize = 30.f;
+    constexpr float kGap = 8.f;
     constexpr float kContentWidth = kPopupWidth - 2.f * kMargin;
     constexpr float kTabWidth = kContentWidth / 6.f;
-    // The popup's own close button lives in the top-right corner; the header's right-hand
-    // block stops short of it.
-    constexpr float kProfileRightX = kPopupWidth / 2.f - kMargin - 26.f;
-
-    ccColor3B const kTextPrimary = ccc3(242, 244, 248);
-    ccColor3B const kTextMuted = ccc3(176, 186, 204);
 
     void fitLabel(CCLabelBMFont* label, float maxScale, float room) {
         float const natural = label->getContentSize().width;
@@ -231,37 +216,14 @@ namespace {
         return label;
     }
 
-    // Native GD nine-slice. Two traps, both learned from screenshots:
-    //   * Custom PNGs are downsized by the Geode packer (a 96px card becomes a 24px base
-    //     sprite), so hard-coded rects on our own assets are unreliable. square02b_001.png
-    //     is a game sprite and is what GD itself uses for menu buttons.
-    //   * The cap insets are in *texture pixels*, and the texture this GD build actually
-    //     loads is not necessarily 80x80. Reading the size from the texture cache and taking
-    //     a proportion of it keeps the corners intact; a fixed number produced a stretched
-    //     right edge and a thin bar sticking out of every pill.
-    // -----------------------------------------------------------------------------
-    // Flat rectangles
-    //
-    // Two things were tried for these and both are wrong in practice:
-    //   * stretching GD's square02b_001.png into a 20-unit row drags the trimmed
-    //     transparent margin of its atlas frame into a sliver at one end, and a
-    //     nine-slice with hard-coded cap insets lands on the wrong sub-rect (rounded left
-    //     end, square right end);
-    //   * CCLayerColor builds its quad relative to the layer position in a way that does
-    //     not follow the anchor point here, so the bars and bodies ended up mirrored away
-    //     from where they were placed.
-    // A 16x16 solid white PNG owned by the mod has nothing to trim and nothing to flip:
-    // set the size, set the color, done. Rounded ends are given up deliberately.
-    // -----------------------------------------------------------------------------
+    // Flat rects from a mod-owned 16x16 solid sprite; GD's trimmed squares drag atlas
+    // margins into every pill, so the mod owns the pixels it stretches.
     char const* const kRectSprite = "reborn-pixel.png"_spr;
 
     CCSprite* makeRect(float width, float height, ccColor3B color, std::uint8_t opacity) {
         auto* rect = CCSprite::create(kRectSprite);
         if (!rect) return nullptr;
         rect->setAnchorPoint({0.5f, 0.5f});
-        // Scale rather than setContentSize: the sprite is a solid untrimmed square, so a
-        // scale factor is exact, while contentSize on a sprite goes through the frame's
-        // offset handling (which is what stretched the GD square into a sliver).
         CCSize const natural = rect->getContentSize();
         if (natural.width > 0.f && natural.height > 0.f) {
             rect->setScaleX(width / natural.width);
@@ -272,95 +234,100 @@ namespace {
         return rect;
     }
 
-    class Pill : public CCNode {
-    protected:
-        CCSprite* m_body = nullptr;
-        CCSprite* m_top = nullptr;
-
-        bool init(float width, float height, ccColor3B color, std::uint8_t opacity) {
-            if (!CCNode::init()) return false;
-            this->setAnchorPoint({0.5f, 0.5f});
-            this->setContentSize({width, height});
-
-            m_body = makeRect(width, height, color, opacity);
-            if (!m_body) return false;
-            m_body->setPosition({width / 2.f, height / 2.f});
-            this->addChild(m_body);
-
-            m_top = makeRect(width, 1.f, ccc3(255, 255, 255), 30);
-            if (m_top) {
-                m_top->setPosition({width / 2.f, height - 0.5f});
-                this->addChild(m_top);
-            }
-            return true;
-        }
-
-    public:
-        static Pill* create(float width, float height, ccColor3B color, std::uint8_t opacity) {
-            auto* ret = new Pill();
-            if (ret && ret->init(width, height, color, opacity)) {
-                ret->autorelease();
-                return ret;
-            }
-            CC_SAFE_DELETE(ret);
-            return nullptr;
-        }
-
-        void tint(ccColor3B color, std::uint8_t opacity) {
-            if (m_body) {
-                m_body->setColor(color);
-                m_body->setOpacity(opacity);
-            }
-        }
+    // Checkbox component: 20x20 box, accent fill with dark check when on, surface fill when
+    // off. The check is two rotated bars built from the same rect sprite, so no glyph set
+    // dependency.
+    struct Checkbox {
+        CCMenuItemSpriteExtra* item = nullptr;
+        CCSprite* box = nullptr;
+        CCNode* check = nullptr;
+        bool on = false;
     };
 
-    ccColor3B const kPillIdle = ccc3(46, 52, 68);
-    ccColor3B const kPillSelected = ccc3(52, 132, 96);
-
-    Pill* makeButtonBackground(float width, float height, bool selected) {
-        return Pill::create(width, height,
-                            selected ? kPillSelected : kPillIdle,
-                            selected ? 255 : 235);
+    void checkboxSet(Checkbox& cb, bool on, ccColor3B accent) {
+        cb.on = on;
+        if (cb.box) {
+            cb.box->setColor(on ? accent : kSurface);
+            cb.box->setOpacity(255);
+        }
+        if (cb.check) cb.check->setVisible(on);
     }
 
-    enum class CycleKind {
-        Renderer, Cull, EditorCull, Detail, Corner, Priority, ParticleCap, SpawnBudget
+    enum class ButtonKind { Primary, Secondary, Ghost };
+
+    struct ButtonParts {
+        CCNode* holder = nullptr;
+        CCSprite* bg = nullptr;
+        CCLabelBMFont* label = nullptr;
     };
 
-    struct CycleRef {
-        CCLabelBMFont* label = nullptr;
-        CycleKind kind = CycleKind::Renderer;
-        std::string key;
-        std::string prefix;
-        float width = 220.f;
-    };
+    ButtonParts makeButton(std::string const& text, ButtonKind kind, float width, float height) {
+        ButtonParts parts;
+        auto* holder = CCNode::create();
+        holder->setContentSize({width, height});
+        parts.holder = holder;
+
+        if (kind != ButtonKind::Ghost) {
+            if (auto* bg = makeRect(width, height,
+                                    kind == ButtonKind::Primary ? kAccent : kSurface, 255)) {
+                bg->setPosition({width / 2.f, height / 2.f});
+                holder->addChild(bg);
+                parts.bg = bg;
+            }
+        }
+        if (auto* label = makeLabel(text, "chatFont.fnt", 0.26f)) {
+            label->setColor(kind == ButtonKind::Primary ? kOnAccent : kText);
+            if (kind == ButtonKind::Ghost) label->setColor(kMuted);
+            fitLabel(label, 0.26f, width - 16.f);
+            label->setPosition({width / 2.f, height / 2.f});
+            holder->addChild(label);
+            parts.label = label;
+        }
+        return parts;
+    }
 
     // One panel at a time. Defined before the class because init() registers itself
     // and onExit() clears the entry.
     class RebornPopup;
     RebornPopup* g_openPanel = nullptr;
 
-    class RebornPopup : public Popup {
+    class RebornPopup : public Popup, public CCKeyboardDelegate {
     protected:
         enum Page : int {
             Overview = 0, Render, Culling, Input, Editor, Diagnostics, PageCount
         };
 
         struct ToggleRef {
-            CCMenuItemToggler* item = nullptr;
+            CCMenuItemSpriteExtra* item = nullptr;
             std::string key;
+            Checkbox box;             // component state (pointers into the live scene graph)
+            ccColor3B accent = kAccent;
         };
 
         struct ButtonRef {
             CCMenuItemSpriteExtra* item = nullptr;
             CCLabelBMFont* label = nullptr;
-            Pill* background = nullptr;
+            CCSprite* bg = nullptr;
+            ButtonKind kind = ButtonKind::Secondary;
         };
 
-        struct ChipRef {
-            Pill* bg = nullptr;
+        struct Segment {
+            CCMenuItemSpriteExtra* item = nullptr;
+            CCSprite* bg = nullptr;
             CCLabelBMFont* label = nullptr;
             std::string name;
+        };
+
+        enum class CycleKind {
+            Renderer, Cull, EditorCull, Detail, Corner, Priority, ParticleCap, SpawnBudget
+        };
+
+        struct CycleRef {
+            CCLabelBMFont* label = nullptr;
+            CycleKind kind = CycleKind::Renderer;
+            std::string key;
+            std::string prefix;
+            float width = 220.f;
         };
 
         struct MetricRef {
@@ -379,35 +346,27 @@ namespace {
         std::vector<std::function<void()>> m_actions;
         std::vector<CycleRef> m_cycles;
         std::vector<ToggleRef> m_toggles;
-        std::vector<ChipRef> m_chips;
+        std::vector<Segment> m_segments;
         std::vector<CCLabelBMFont*> m_tabLabels;
         std::vector<MetricRef> m_metrics;
         CCLabelBMFont* m_headerProfile = nullptr;
         CCLabelBMFont* m_benchLabel = nullptr;
 
         static constexpr char const* kPageNames[] = {
-            "Overview", "Render", "Culling", "Input", "Editor", "Diag"
+            "Overview", "Render", "Culling", "Input", "Editor", "Diagnostics"
         };
 
         static constexpr char const* kProfileNames[] = {
             "Custom", "Default", "Balanced", "Performance", "Extreme"
         };
-
-        bool init() {
-            // GD's own popup frame: opaque, native, and its nine-slice is built by the Popup
-            // base class. GJ_square01.png (Geode's default) is the brown level-info panel,
-            // which reads as a completely different UI language.
+        bool init() override {
+            // GD's own popup frame keeps the panel in the game's visual language; Geode's
+            // default brown frame reads as a different app.
             if (!Popup::init(kPopupWidth, kPopupHeight, "square01_001.png")) return false;
             this->setID("minimum-reborn-popup"_spr);
 
-            // On a small window the panel would otherwise be wider than the screen, so the
-            // whole popup is scaled down to fit. Touch handling follows the node transform,
-            // so the hit boxes scale with it.
-            // Only the content layer is scaled: scaling the popup itself would also shrink
-            // the full-screen dimmer behind it and leave bright bands at the edges. Anything
-            // the Popup base class parents directly to the layer (frame, close button) is
-            // scaled and repositioned by the same factor, which is checked rather than
-            // assumed because that parenting differs between Geode versions.
+            // Only the content layer is scaled down on small windows; scaling the frame
+            // would shrink the dimmer too and leave bright bands.
             auto* director = CCDirector::get();
             if (director && m_mainLayer) {
                 CCSize const visible = director->getVisibleSize();
@@ -415,11 +374,14 @@ namespace {
                 float const fitH = visible.height > 1.f ? (visible.height - 24.f) / kPopupHeight : 1.f;
                 float const fit = std::min({1.f, fitW, fitH});
                 if (fit > 0.01f && fit < 1.f) {
-                    // Only the content layer is scaled. The frame and the close button live
-                    // inside it in this Popup implementation, and scaling them from the
-                    // outside would double-scale anything that happens to be a grandchild.
                     m_mainLayer->setScale(fit);
                 }
+            }
+
+            // Escape closes. The game's panels have no global focus chain, so focus rings
+            // are omitted rather than faked; Tab order is not implemented for the same reason.
+            if (auto* dispatcher = CCKeyboardDispatcher::sharedDispatcher()) {
+                dispatcher->addDelegate(this);
             }
 
             this->buildHeader();
@@ -432,23 +394,13 @@ namespace {
             return true;
         }
 
-        // -----------------------------------------------------------------------------
-        // Layout primitives
-        //
-        // Everything is derived from the panel size and one spacing scale, so the header,
-        // nav, content rows and footer share the same margins instead of each control
-        // carrying its own hard-coded coordinate.
-        // -----------------------------------------------------------------------------
         static constexpr float kLeft = -kPopupWidth / 2.f + kMargin;
         static constexpr float kRight = kPopupWidth / 2.f - kMargin;
         static constexpr float kHeaderCenterY = kPopupHeight / 2.f - kHeaderH / 2.f;
         static constexpr float kNavCenterY = kPopupHeight / 2.f - kHeaderH - kNavH / 2.f;
-        static constexpr float kFooterY = -kPopupHeight / 2.f + kFooterH / 2.f + 2.f;
+        static constexpr float kFooterY = -kPopupHeight / 2.f + kFooterH / 2.f - 2.f;
         static constexpr float kRowTop = kPopupHeight / 2.f - kHeaderH - kNavH - kRowPitch / 2.f;
 
-        // m_mainLayer covers the whole panel with its origin in the bottom-left corner, so
-        // the centered coordinates the layout produces are shifted here once, in the
-        // placement helpers, rather than at every call site.
         static constexpr float kCX = kPopupWidth / 2.f;
         static constexpr float kCY = kPopupHeight / 2.f;
 
@@ -460,6 +412,10 @@ namespace {
             return kLeft + kTabWidth * (static_cast<float>(index) + 0.5f);
         }
 
+        void keyDown(enumKeyCodes key, double) override {
+            if (key == KEY_Escape) this->closePopup(nullptr);
+        }
+
         CCLabelBMFont* addLabel(
             CCNode* parent, std::string const& text, char const* font, float scale,
             ccColor3B color, std::uint8_t opacity, float x, float y, int align
@@ -469,7 +425,6 @@ namespace {
             label->setScale(scale);
             label->setColor(color);
             label->setOpacity(opacity);
-            // align: 0 = centered, 1 = left anchored, 2 = right anchored
             if (align == 1) {
                 label->setAnchorPoint({0.f, 0.5f});
                 label->setAlignment(kCCTextAlignmentLeft);
@@ -486,39 +441,36 @@ namespace {
         void buildHeader() {
             CCNode* root = m_mainLayer;
 
-            // icon-button.png is the MK badge that the pause button already loads from the
-            // package, so this is the asset whose loading is proven at runtime.
             if (auto* icon = CCSprite::create("icon-button.png"_spr)) {
                 float const h = icon->getContentSize().height;
                 icon->setScale(h > 0.f ? kIconSize / h : 1.f);
-                icon->setPosition({kCX + kLeft + kIconSize / 2.f, kCY + kHeaderCenterY - 5.f});
+                icon->setPosition({kCX + kLeft + kIconSize / 2.f, kCY + kHeaderCenterY});
                 root->addChild(icon);
             }
 
-            float const textX = kLeft + kIconSize + 8.f;
-            addLabel(root, "MINIMUM REBORN", "bigFont.fnt", 0.42f, kTextPrimary, 255,
-                     textX, kHeaderCenterY - 1.f, 1);
-            addLabel(root, "Performance and rendering", "chatFont.fnt", 0.3f, kTextMuted, 200,
-                     textX, kHeaderCenterY - 11.f, 1);
+            float const textX = kLeft + kIconSize + 10.f;
+            addLabel(root, "Minimum Reborn", "bigFont.fnt", 0.30f, kText, 255,
+                     textX, kHeaderCenterY + 7.f, 1);
+            addLabel(root, "Performance first.", "chatFont.fnt", 0.24f, kMuted, 255,
+                     textX, kHeaderCenterY - 9.f, 1);
 
-            addLabel(root, "PROFILE", "chatFont.fnt", 0.26f, kTextMuted, 190,
-                     kProfileRightX, kHeaderCenterY - 2.f, 2);
-            m_headerProfile = addLabel(root, "Balanced", "goldFont.fnt", 0.42f, kTextPrimary,
-                                       255, kProfileRightX, kHeaderCenterY - 12.f, 2);
+            ButtonParts pill = makeButton("Balanced", ButtonKind::Secondary, 112.f, 24.f);
+            if (pill.holder) {
+                pill.holder->setPosition({kCX + kRight - 56.f, kCY + kHeaderCenterY});
+                root->addChild(pill.holder);
+                m_headerProfile = pill.label;
+            }
         }
 
         void buildNav() {
             m_navRoot = CCNode::create();
             m_mainLayer->addChild(m_navRoot);
 
-            // Baseline the tabs sit on, plus the accent bar that marks the selected tab.
-            if (auto* base = makeRect(kContentWidth, 1.f, ccc3(255, 255, 255), 26)) {
-                // The rect sprite is anchored at its centre, so the panel centre is its
-                // position - adding half the width here pushed the rule off the right edge.
+            if (auto* base = makeRect(kContentWidth, 1.f, kHairline, 255)) {
                 base->setPosition({kCX, kCY + kNavCenterY - kNavH / 2.f});
                 m_navRoot->addChild(base);
             }
-            m_tabAccent = makeRect(kTabWidth - 16.f, 2.f, ccc3(96, 214, 141), 235);
+            m_tabAccent = makeRect(kTabWidth - 24.f, 2.f, kAccent, 255);
             if (m_tabAccent) {
                 m_tabAccent->setPosition({kCX, kCY});
                 m_navRoot->addChild(m_tabAccent);
@@ -530,12 +482,12 @@ namespace {
 
             for (int i = 0; i < static_cast<int>(PageCount); ++i) {
                 auto* holder = CCNode::create();
-                holder->setContentSize({kTabWidth, kNavH - 6.f});
-                auto* label = makeLabel(kPageNames[i], "bigFont.fnt", 0.33f, 210, false);
+                holder->setContentSize({kTabWidth - 4.f, kNavH - 6.f});
+                auto* label = makeLabel(kPageNames[i], "bigFont.fnt", 0.27f, 200, false);
                 if (label) {
-                    label->setColor(kTextMuted);
-                    fitLabel(label, 0.33f, kTabWidth - 8.f);
-                    label->setPosition({kTabWidth / 2.f, (kNavH - 6.f) / 2.f});
+                    label->setColor(kMuted);
+                    fitLabel(label, 0.27f, kTabWidth - 12.f);
+                    label->setPosition({(kTabWidth - 4.f) / 2.f, (kNavH - 6.f) / 2.f});
                     holder->addChild(label);
                 }
 
@@ -555,24 +507,18 @@ namespace {
             m_footerMenu->setPosition({kCX, kCY});
             m_mainLayer->addChild(m_footerMenu, 10);
 
-            this->footerButton("Reset", kLeft + 48.f, 96.f, menu_selector(RebornPopup::onReset));
-            this->footerButton("All Settings", 0.f, 118.f, menu_selector(RebornPopup::onAllSettings));
-            this->footerButton("Close", kRight - 48.f, 96.f, menu_selector(RebornPopup::closePopup));
+            this->footerButton("Reset", kLeft + 52.f, 104.f, ButtonKind::Ghost,
+                               menu_selector(RebornPopup::onReset));
+            this->footerButton("All Settings", 0.f, 150.f, ButtonKind::Secondary,
+                               menu_selector(RebornPopup::onAllSettings));
+            this->footerButton("Close", kRight - 52.f, 104.f, ButtonKind::Secondary,
+                               menu_selector(RebornPopup::closePopup));
         }
 
-        void footerButton(char const* text, float x, float width, SEL_MenuHandler selector) {
-            auto* holder = CCNode::create();
-            holder->setContentSize({width, kButtonHeight});
-            if (auto* bg = makeButtonBackground(width, kButtonHeight, false)) {
-                bg->setPosition({width / 2.f, kButtonHeight / 2.f});
-                holder->addChild(bg);
-            }
-            if (auto* label = makeLabel(text, "bigFont.fnt", 0.36f)) {
-                fitLabel(label, 0.36f, width - 12.f);
-                label->setPosition({width / 2.f, kButtonHeight / 2.f});
-                holder->addChild(label);
-            }
-            auto* item = CCMenuItemSpriteExtra::create(holder, this, selector);
+        void footerButton(char const* text, float x, float width, ButtonKind kind,
+                          SEL_MenuHandler selector) {
+            ButtonParts parts = makeButton(text, kind, width, kButtonHeight);
+            auto* item = CCMenuItemSpriteExtra::create(parts.holder, this, selector);
             m_footerMenu->addChild(item);
             item->setPosition({x, kFooterY});
         }
@@ -582,9 +528,8 @@ namespace {
             if (page < 0 || page >= static_cast<int>(PageCount) || page == static_cast<int>(m_page)) return;
             m_page = static_cast<Page>(page);
             this->refreshTabs();
-            // The sender lives inside the page tree that buildPage() replaces. Rebuilding in
-            // the same callback would free the menu item while CCMenu is still dispatching
-            // its touch release. Defer to the next tick instead.
+            // The tab menu rebuilds the page tree in applyTab; swapping it out from inside
+            // the dispatch callback would free the sender while CCMenu still runs.
             this->scheduleOnce(schedule_selector(RebornPopup::applyTab), 0.f);
         }
 
@@ -598,19 +543,15 @@ namespace {
                 auto* label = m_tabLabels[static_cast<std::size_t>(i)];
                 if (!label) continue;
                 label->setScale(1.f);
-                label->setColor(selected ? kTextPrimary : kTextMuted);
-                label->setOpacity(selected ? 255 : 200);
-                fitLabel(label, selected ? 0.35f : 0.33f, kTabWidth - 8.f);
+                label->setColor(selected ? kText : kMuted);
+                label->setOpacity(selected ? 255 : 190);
+                fitLabel(label, 0.27f, kTabWidth - 12.f);
             }
             if (m_tabAccent) {
                 m_tabAccent->setPosition({kCX + tabCenter(static_cast<int>(m_page)),
                                           kCY + kNavCenterY - kNavH / 2.f + 1.5f});
             }
         }
-
-        // -----------------------------------------------------------------------------
-        // Page building
-        // -----------------------------------------------------------------------------
         void buildPage() {
             if (m_pageRoot) {
                 m_pageRoot->removeFromParentAndCleanup(true);
@@ -620,7 +561,7 @@ namespace {
             m_actions.clear();
             m_cycles.clear();
             m_toggles.clear();
-            m_chips.clear();
+            m_segments.clear();
             m_metrics.clear();
             m_benchLabel = nullptr;
 
@@ -644,65 +585,81 @@ namespace {
             this->refreshPage();
         }
 
-        // Row builders. Each takes a row index, so a page reads as a list of rows and every
-        // row shares the same pitch, margins and baselines.
-        void headingRow(int row, char const* text) {
-            addLabel(m_pageRoot, text, "chatFont.fnt", 0.34f, ccc3(122, 204, 158), 235,
+        void noteRow(int row, std::string const& text, float scale = 0.24f, std::uint8_t opacity = 200) {
+            addLabel(m_pageRoot, text, "chatFont.fnt", scale, kMuted, opacity,
                      kLeft + 2.f, rowY(row), 1);
         }
 
-        void noteRow(int row, std::string const& text, float scale = 0.3f, std::uint8_t opacity = 165) {
-            // CCLabelBMFont has no wrap width in this binding, so notes are written to fit:
-            // at 0.3 chatFont a line of this length is roughly half the content width.
-            addLabel(m_pageRoot, text, "chatFont.fnt", scale, kTextMuted, opacity,
-                     kLeft + 2.f, rowY(row), 1);
+        void ledger(int row) {
+            // One hairline under a telemetry row; the rule the eye follows across the row.
+            if (auto* line = makeRect(kContentWidth, 1.f, kHairline, 120)) {
+                line->setPosition({kCX, kCY + (rowY(row) - kRowPitch / 2.f + 3.f)});
+                m_pageRoot->addChild(line);
+            }
         }
 
         void statRow(int row, char const* label, char const* metric) {
-            addLabel(m_pageRoot, label, "chatFont.fnt", 0.34f, kTextMuted, 215,
+            addLabel(m_pageRoot, label, "chatFont.fnt", 0.26f, kMuted, 255,
                      kLeft + 2.f, rowY(row), 1);
-            auto* value = addLabel(m_pageRoot, "--", "chatFont.fnt", 0.36f, kTextPrimary, 255,
+            auto* value = addLabel(m_pageRoot, "--", "chatFont.fnt", 0.28f, kText, 255,
                                    kRight - 2.f, rowY(row), 2);
             if (value) m_metrics.push_back({metric, value, {}});
+            this->ledger(row);
         }
 
-        // labelX lets two toggles share a row (the second one starts mid-panel).
-        void toggleRow(int row, std::string key, char const* text, float labelX = kLeft + 28.f) {
-            float const boxX = labelX - 17.f;
-            auto* toggler = CCMenuItemToggler::createWithStandardSprites(
-                this, menu_selector(RebornPopup::onToggle), 0.5f
-            );
-            if (!toggler) return;
-            toggler->setTag(static_cast<int>(m_toggles.size()));
-            m_pageMenu->addChild(toggler);
-            toggler->setPosition({boxX, rowY(row)});
-            m_toggles.push_back({toggler, std::move(key)});
+        // One checkbox per row. labelX shifts the second column when two share a row.
+        void toggleRow(int row, std::string key, char const* text, float labelX = kLeft + 30.f,
+                       ccColor3B accent = kAccent) {
+            float const boxX = labelX - 15.f;
+            auto* holder = CCNode::create();
+            holder->setContentSize({22.f, 22.f});
 
-            addLabel(m_pageRoot, text, "bigFont.fnt", 0.36f, kTextPrimary, 235,
+            auto* box = makeRect(22.f, 22.f, kSurface, 255);
+            if (box) {
+                box->setPosition({11.f, 11.f});
+                holder->addChild(box);
+            }
+
+            auto* check = CCNode::create();
+            check->setPosition({11.f, 11.f});
+            CCSprite* bar1 = makeRect(10.f, 3.f, kOnAccent, 255);
+            CCSprite* bar2 = makeRect(15.f, 3.f, kOnAccent, 255);
+            if (bar1 && bar2) {
+                bar1->setRotation(-42.f);
+                bar2->setRotation(45.f);
+                bar1->setPosition({-3.4f, -2.1f});
+                bar2->setPosition({1.3f, 0.6f});
+                check->addChild(bar1);
+                check->addChild(bar2);
+            }
+            check->setVisible(false);
+            holder->addChild(check);
+
+            auto* item = CCMenuItemSpriteExtra::create(
+                holder, this, menu_selector(RebornPopup::onToggle)
+            );
+            if (!item) return;
+            item->setTag(static_cast<int>(m_toggles.size()));
+            m_pageMenu->addChild(item);
+            item->setPosition({boxX, rowY(row)});
+
+            Checkbox state{item, box, check, false};
+            m_toggles.push_back({item, std::move(key), state, accent});
+
+            addLabel(m_pageRoot, text, "bigFont.fnt", 0.27f, kText, 235,
                      labelX, rowY(row), 1);
         }
 
         ButtonRef pillAt(
             float x, float y, float width, std::string const& text,
-            std::function<void()> action, float fontScale = 0.36f
+            std::function<void()> action, ButtonKind kind = ButtonKind::Secondary
         ) {
             ButtonRef ref;
-            auto* holder = CCNode::create();
-            holder->setContentSize({width, kButtonHeight});
-            if (auto* bg = makeButtonBackground(width, kButtonHeight, false)) {
-                bg->setPosition({width / 2.f, kButtonHeight / 2.f});
-                holder->addChild(bg);
-                ref.background = bg;
-            }
-            auto* label = makeLabel(text, "bigFont.fnt", fontScale);
-            if (label) {
-                label->setTag(1);
-                fitLabel(label, fontScale, width - 12.f);
-                label->setPosition({width / 2.f, kButtonHeight / 2.f});
-                holder->addChild(label);
-            }
+            ButtonParts parts = makeButton(text, kind, width, kButtonHeight);
+            ref.bg = parts.bg;
+            ref.label = parts.label;
             auto* item = CCMenuItemSpriteExtra::create(
-                holder, this, menu_selector(RebornPopup::onAction)
+                parts.holder, this, menu_selector(RebornPopup::onAction)
             );
             item->setTag(static_cast<int>(m_actions.size()));
             m_actions.push_back(std::move(action));
@@ -711,7 +668,6 @@ namespace {
                 item->setPosition({x, y});
             }
             ref.item = item;
-            ref.label = label;
             return ref;
         }
 
@@ -720,42 +676,54 @@ namespace {
             float width = kContentWidth, float x = 0.f
         ) {
             auto ref = this->pillAt(x, rowY(row), width, " ",
-                                    std::function<void()>(), 0.34f);
+                                    std::function<void()>(), ButtonKind::Secondary);
             m_cycles.push_back({ref.label, kind, std::move(key), prefix, width});
             // The key was moved into the row above, so the action reads it back from there.
-            // Passing the moved-from string produced an empty setting name, which silently
-            // made the particle and editor cull-mode rows write nothing at all.
             m_actions.back() = this->makeCycleAction(kind, m_cycles.back().key);
         }
 
-        void buildOverview() {
-            headingRow(0, "OVERVIEW - LIVE");
-            statRow(1, "Frame", "frame");
-            statRow(2, "Pipeline", "pipeline");
-
-            float const chipW = (kContentWidth - 4.f * kGap) / 5.f;
+        void buildProfileRow(int row) {
+            float const segW = kContentWidth / 5.f;
             for (int i = 0; i < 5; ++i) {
                 std::string name = kProfileNames[i];
-                float const x = kLeft + chipW / 2.f + static_cast<float>(i) * (chipW + kGap);
-                auto ref = this->pillAt(x, rowY(3), chipW, name,
-                    [this, name]() {
-                        Mod::get()->setSettingValue<std::string>("profile", name);
-                        reborn::refreshConfig();
-                        this->refreshPage();
-                    }, 0.3f
-                );
-                m_chips.push_back({ref.background, ref.label, name});
-            }
+                auto* holder = CCNode::create();
+                holder->setContentSize({segW, 30.f});
 
-            this->toggleRow(4, "enabled", "Mod enabled");
-            this->toggleRow(5, "show-overlay", "Performance overlay");
+                auto* bg = makeRect(segW, 30.f, kSurface, 255);
+                if (bg) {
+                    bg->setPosition({segW / 2.f, 15.f});
+                    holder->addChild(bg);
+                }
+                auto* label = makeLabel(name, "bigFont.fnt", 0.25f, 255, false);
+                if (label) {
+                    label->setColor(kText);
+                    fitLabel(label, 0.25f, segW - 12.f);
+                    label->setPosition({segW / 2.f, 15.f});
+                    holder->addChild(label);
+                }
+                auto* item = CCMenuItemSpriteExtra::create(
+                    holder, this, menu_selector(RebornPopup::onSegment)
+                );
+                item->setTag(i);
+                m_pageMenu->addChild(item);
+                item->setPosition({kLeft + segW * (static_cast<float>(i) + 0.5f), rowY(row)});
+                m_segments.push_back({item, bg, label, std::move(name)});
+            }
+        }
+        void buildOverview() {
+            statRow(0, "Frame", "frame");
+            statRow(1, "Pipeline", "pipeline");
+            this->buildProfileRow(2);
+
+            this->toggleRow(3, "enabled", "Mod enabled", kLeft + 30.f, kGood);
+            this->toggleRow(4, "show-overlay", "Performance overlay");
 
             float const half = (kContentWidth - kGap) / 2.f;
-            auto bench = this->pillAt(kLeft + half / 2.f, rowY(6), half, "Benchmark",
-                [this]() { this->toggleBenchmark(); }, 0.34f);
+            auto bench = this->pillAt(kLeft + half / 2.f, rowY(5), half, "Benchmark",
+                [this]() { this->toggleBenchmark(); }, ButtonKind::Primary);
             m_benchLabel = bench.label;
-            this->pillAt(kRight - half / 2.f, rowY(6), half, "Geode Settings",
-                [this]() { this->onAllSettings(nullptr); }, 0.34f);
+            this->pillAt(kRight - half / 2.f, rowY(5), half, "Geode Settings",
+                [this]() { this->onAllSettings(nullptr); }, ButtonKind::Secondary);
         }
 
         void buildRender() {
@@ -769,7 +737,7 @@ namespace {
             this->cycleRow(5, "Particle cap", CycleKind::ParticleCap, "particle-cap", half,
                            kLeft + half / 2.f);
 #ifdef GEODE_IS_WINDOWS
-            this->toggleRow(5, "render-gate", "Render gate", kRight - half + 28.f);
+            this->toggleRow(5, "render-gate", "Render gate", kRight - half + 30.f);
 #endif
             statRow(6, "Work avoided", "avoided");
         }
@@ -777,28 +745,19 @@ namespace {
         void buildCulling() {
             cycleRow(0, "Particles", CycleKind::Cull, "particle-cull-mode");
             cycleRow(1, "Scene sprites", CycleKind::Cull, "scene-cull");
-
-            // Off by default and bounded per frame: past this many particle systems created
-            // in one frame, further systems get a 4-particle pool instead of a full buffer.
             cycleRow(2, "Spawn budget", CycleKind::SpawnBudget, "spawn-budget", 220.f, 60.f);
 
-            // The mode cycles above only take effect while this switch is on, and it had no
-            // control anywhere in the panel.
             float const half = (kContentWidth - kGap) / 2.f;
             this->toggleRow(3, "cull-offscreen-particles", "Off-screen particles");
-            // Opt-in whole-batch cull for the batched level path; off until the owner
-            // measures it in-game. Performance and Extreme profiles turn it on.
-            this->toggleRow(3, "batch-culling", "Batch culling", kRight - half + 28.f);
-            statRow(4, "Sprites / particles", "cull-rate");
+            this->toggleRow(3, "batch-culling", "Batch culling", kRight - half + 30.f);
+            statRow(4, "Sprites and particles", "cull-rate");
             statRow(5, "Batches (session)", "batches");
-            noteRow(6, "Draw-only. Simulation, physics, collisions and triggers are untouched.");
+            noteRow(6, "Draw-only. Simulation, physics and triggers are untouched.");
         }
 
         void buildInput() {
             this->toggleRow(0, "no-input-delay", "No Additional Input Delay");
 #ifdef GEODE_IS_WINDOWS
-            // The drain is compiled into the Windows draw path; showing the switch elsewhere
-            // would offer a control that cannot do anything.
             this->toggleRow(1, "low-latency", "Low Latency (drain GPU queue)");
 #endif
             statRow(2, "Frame order", "input");
@@ -808,7 +767,7 @@ namespace {
             this->toggleRow(4, "background-throttle", "Throttle drawing in background");
             cycleRow(5, "Priority", CycleKind::Priority, "process-priority");
 #endif
-            noteRow(6, "Neither switch touches physics, input handling or the FPS cap. "
+            noteRow(6, "Neither switch touches physics, input or the FPS cap. "
                        "Low Latency costs frame rate to shorten the queue.");
         }
 
@@ -818,9 +777,8 @@ namespace {
             statRow(2, "State", "editor-state");
             statRow(3, "Sprite draws", "editor-sprites");
             statRow(4, "Particle draws", "editor-particles");
-            noteRow(5, "Draw-only. Object data, selection, dragging, undo, triggers and saving "
-                       "are untouched.");
-            noteRow(6, "Open the editor to populate these counters.", 0.3f, 140);
+            noteRow(5, "Draw-only. Object data, selection, triggers and saving are untouched.");
+            noteRow(6, "Open the editor to populate these counters.", 0.24f, 150);
         }
 
         void buildDiagnostics() {
@@ -829,15 +787,12 @@ namespace {
             cycleRow(2, "Overlay corner", CycleKind::Corner, "overlay-corner");
             statRow(3, "Last benchmark", "benchmark");
             statRow(4, "Frame", "diag-frame");
-            statRow(5, "Spikes / draw cost", "diag-spikes");
+            statRow(5, "Spikes and draw cost", "diag-spikes");
             auto bench = this->pillAt(0.f, rowY(6), 200.f, "Benchmark",
-                [this]() { this->toggleBenchmark(); }, 0.34f);
+                [this]() { this->toggleBenchmark(); }, ButtonKind::Primary);
             m_benchLabel = bench.label;
         }
 
-        // -----------------------------------------------------------------------------
-        // Actions
-        // -----------------------------------------------------------------------------
         std::function<void()> makeCycleAction(CycleKind kind, std::string key) {
             return [this, kind, key]() {
                 auto* mod = Mod::get();
@@ -871,21 +826,16 @@ namespace {
                     mod->setSettingValue<std::string>("process-priority", next);
                 }
                 else if (kind == CycleKind::SpawnBudget) {
-                    int64_t const current = mod->getSettingValue<int64_t>(key);
-                    int64_t const next = current == 0 ? 8 : current < 8 ? 8
-                                           : current < 16 ? 16 : current < 32 ? 32 : 0;
-                    mod->setSettingValue<int64_t>(key, next);
-                    this->markCustom();
+                    int64_t const budget = mod->getSettingValue<int64_t>("spawn-budget");
+                    int64_t const next = budget == 0 ? 8 : budget == 8 ? 16 : budget == 16 ? 32 : 0;
+                    mod->setSettingValue<int64_t>("spawn-budget", next);
                 }
                 else if (kind == CycleKind::ParticleCap) {
-                    int64_t const current = mod->getSettingValue<int64_t>("particle-cap");
-                    int64_t next = 512;
-                    if (current < 64) next = 64;
-                    else if (current < 128) next = 128;
-                    else if (current < 256) next = 256;
-                    else if (current < 512) next = 512;
-                    else next = 32;
+                    int64_t const cap = mod->getSettingValue<int64_t>("particle-cap");
+                    int64_t const next = cap == 256 ? 128 : cap == 128 ? 64 : cap == 64 ? 32 : 256;
                     mod->setSettingValue<int64_t>("particle-cap", next);
+                }
+                if (kind != CycleKind::Detail && kind != CycleKind::Corner) {
                     this->markCustom();
                 }
                 reborn::refreshConfig();
@@ -899,6 +849,14 @@ namespace {
             }
         }
 
+        void onSegment(CCObject* sender) {
+            int const index = static_cast<CCNode*>(sender)->getTag();
+            if (index < 0 || index > 4) return;  // five segments, 0..4
+            Mod::get()->setSettingValue<std::string>("profile", kProfileNames[index]);
+            reborn::refreshConfig();
+            this->refreshPage();
+        }
+
         void onAction(CCObject* sender) {
             int const index = static_cast<CCNode*>(sender)->getTag();
             if (index >= 0 && index < static_cast<int>(m_actions.size())) {
@@ -907,14 +865,13 @@ namespace {
         }
 
         void onToggle(CCObject* sender) {
-            auto* toggler = static_cast<CCMenuItemToggler*>(sender);
+            auto* toggler = static_cast<CCMenuItemSpriteExtra*>(sender);
             int const index = toggler ? toggler->getTag() : -1;
             if (index < 0 || index >= static_cast<int>(m_toggles.size())) return;
-            std::string const& key = m_toggles[static_cast<std::size_t>(index)].key;
+            auto& toggle = m_toggles[static_cast<std::size_t>(index)];
             auto* mod = Mod::get();
-            bool const next = !mod->getSettingValue<bool>(key);
-            // These four are diagnostics or per-user preferences that no profile owns, so
-            // changing them must not silently rewrite the profile to Custom.
+            bool const next = !mod->getSettingValue<bool>(toggle.key);
+            // Toggles that no profile owns must not silently rewrite the profile to Custom.
             static char const* const kProfileNeutral[] = {
                 "show-overlay", "no-input-delay", "editor-culling", "timer-resolution",
                 "adaptive-cap", "low-latency", "enabled", "render-gate",
@@ -923,7 +880,7 @@ namespace {
             };
             bool neutral = false;
             for (auto const* name : kProfileNeutral) {
-                if (key == name) {
+                if (toggle.key == name) {
                     neutral = true;
                     break;
                 }
@@ -931,7 +888,7 @@ namespace {
             if (!neutral) {
                 this->markCustom();
             }
-            mod->setSettingValue<bool>(key, next);
+            mod->setSettingValue<bool>(toggle.key, next);
             reborn::refreshConfig();
             this->refreshPage();
         }
@@ -953,11 +910,10 @@ namespace {
             createQuickPopup(
                 "Reset Minimum Reborn",
                 "Restore every setting to the <cy>Balanced</c> defaults?\n"
-                "The current profile and all toggles will be replaced.",
+                "The current profile and all switches will be replaced.",
                 "Cancel", "Reset",
-                // The alert outlives nothing on its own: hold a reference for its lifetime so
-                // a panel closed while the confirmation is up cannot be called through a
-                // dangling pointer. FLAlertLayer always invokes this callback on close.
+                // Hold a reference for the popup's lifetime so a panel closed while the
+                // confirmation is up cannot be called through a dangling pointer.
                 [this](FLAlertLayer*, bool confirmed) {
                     if (confirmed) {
                         reborn::resetToDefaults();
@@ -977,31 +933,27 @@ namespace {
             this->onClose(nullptr);
         }
 
-        // -----------------------------------------------------------------------------
-        // Refresh
-        // -----------------------------------------------------------------------------
         void refreshPage() {
             auto* mod = Mod::get();
             std::string const profile = mod->getSettingValue<std::string>("profile");
             if (m_headerProfile) m_headerProfile->setString(profile.c_str());
 
-            for (auto& t : m_toggles) {
-                if (t.item) t.item->toggle(mod->getSettingValue<bool>(t.key));
+            for (auto& toggle : m_toggles) {
+                bool const on = mod->getSettingValue<bool>(toggle.key);
+                checkboxSet(toggle.box, on, toggle.accent);
             }
 
             for (auto& c : m_cycles) {
                 if (!c.label) continue;
                 std::string text = c.prefix + ": " + this->cycleValue(c, mod);
                 c.label->setString(text.c_str());
-                fitLabel(c.label, 0.34f, c.width - 12.f);
+                fitLabel(c.label, 0.26f, c.width - 16.f);
             }
 
-            for (auto& chip : m_chips) {
-                bool const selected = chip.name == profile;
-                if (chip.bg) {
-                    chip.bg->tint(selected ? kPillSelected : kPillIdle, selected ? 255 : 235);
-                }
-                if (chip.label) chip.label->setColor(selected ? kTextPrimary : kTextMuted);
+            for (auto& segment : m_segments) {
+                bool const selected = segment.name == profile;
+                if (segment.bg) segment.bg->setColor(selected ? kAccent : kSurface);
+                if (segment.label) segment.label->setColor(selected ? kOnAccent : kText);
             }
 
             if (m_benchLabel) {
@@ -1028,12 +980,11 @@ namespace {
                     return std::to_string(mod->getSettingValue<int64_t>("particle-cap"));
                 case CycleKind::SpawnBudget: {
                     int64_t const budget = mod->getSettingValue<int64_t>("spawn-budget");
-                    return budget == 0 ? std::string("off") : std::to_string(budget);
+                    return budget == 0 ? std::string("Off") : std::to_string(budget);
                 }
             }
             return "--";
         }
-
         // One labelled value per metric id. A metric with no samples answers "--" instead of
         // inventing a number.
         std::string metricValue(std::string const& id) {
@@ -1098,7 +1049,7 @@ namespace {
             else if (id == "editor-state") {
                 std::snprintf(text, sizeof(text), "%s   %s",
                               reborn::inEditor() ? "editor active" : "not in the editor",
-                              cfg.editorCulling ? cullName(cfg.editorCull) : "off");
+                              cfg.editorCulling ? cullName(cfg.editorCull) : "Off");
             }
             else if (id == "editor-sprites") {
                 std::snprintf(text, sizeof(text), "%llu skipped / %llu tested",
@@ -1111,8 +1062,6 @@ namespace {
                               u64(counters.editorParticlesExamined));
             }
             else if (id == "benchmark") {
-                // Produced by the same recorder that writes the log line, so the panel cannot
-                // show a number the measurement never took.
                 char const* summary = reborn::benchmarkSummary();
                 return summary && summary[0] ? std::string(summary) : std::string("no run yet");
             }
@@ -1123,7 +1072,6 @@ namespace {
             }
             else if (id == "diag-spikes") {
                 // A spike is only attributable to the draw path if drawScene itself got long.
-                // These two numbers answer "is the mod the cause" without guessing.
                 std::snprintf(text, sizeof(text), "%zu over 25 ms   draw avg %.2f   worst %.2f ms",
                               stats.spikeCount(240, 25.0), stats.averageWorkMs(120),
                               stats.worstWorkMs(240));
@@ -1136,6 +1084,9 @@ namespace {
 
         void onExit() override {
             if (g_openPanel == this) g_openPanel = nullptr;
+            if (auto* dispatcher = CCKeyboardDispatcher::sharedDispatcher()) {
+                dispatcher->removeDelegate(this);
+            }
             Popup::onExit();
         }
 
@@ -1163,76 +1114,55 @@ namespace {
     };
 }
 
-    // -----------------------------------------------------------------------------
-    // Entry point button
-    //
-    // Installed on the gameplay pause layer only. An editor pause layer version shipped in
-    // v1.4.1 and was reverted in v1.4.2, because opening that menu crashed on the test
-    // machine and the mod has no reason to sit in that call chain. The consequence is that
-    // the Editor page counters are read from a level pause menu, not inside the editor.
-    // -----------------------------------------------------------------------------
-    // One panel at a time. Two popups would mean two live schedules and two sets of controls
-    // writing the same settings; the scene graph cannot be searched cheaply here (this
-    // binding has no recursive lookup), so the open panel registers itself.
-    // (g_openPanel is defined above the class, where init() first uses it.)
+void openRebornPanel() {
+    if (g_openPanel) return;
+    if (auto* popup = RebornPopup::create()) {
+        popup->show();
+    }
+}
 
-    void openRebornPanel() {
-        if (g_openPanel) return;
-        if (auto* popup = RebornPopup::create()) {
-            popup->show();
-        }
+// Installed on the gameplay pause layer. The editor pause layer entry was reverted in
+// v1.4.2 (the menu crashed on its own), so the Editor page counters are read from a level
+// pause menu, not inside the editor.
+void installPanelButton(CCNode* layer, CCNode* target, SEL_MenuHandler selector) {
+    float const width = 48.f;
+    auto* holder = CCNode::create();
+    holder->setContentSize({width, width});
+
+    if (auto* icon = CCSprite::create("icon-button.png"_spr)) {
+        float const h = icon->getContentSize().height;
+        icon->setScale(h > 0.f ? 34.f / h : 1.f);
+        icon->setPosition({width / 2.f, width / 2.f});
+        holder->addChild(icon, 1);
+    }
+    else if (auto* fallback = makeLabel("MR", "bigFont.fnt", 0.5f)) {
+        fallback->setPosition({width / 2.f, width / 2.f});
+        holder->addChild(fallback, 1);
     }
 
-    void installPanelButton(CCNode* layer, CCNode* target, SEL_MenuHandler selector) {
-        float const width = 48.f;
-        auto* holder = CCNode::create();
-        holder->setContentSize({width, width});
+    auto* button = CCMenuItemSpriteExtra::create(holder, target, selector);
+    button->setID("reborn-button"_spr);
 
-        auto* bg = Pill::create(width, width, kPillIdle, 235);
-        if (bg) {
-            bg->setPosition({width / 2.f, width / 2.f});
-            holder->addChild(bg);
-        }
+    auto* menu = CCMenu::create();
+    menu->setID("reborn-menu"_spr);
+    menu->addChild(button);
+    menu->setPosition({0.f, 0.f});
 
-        if (auto* icon = CCSprite::create("icon-button.png"_spr)) {
-            float const h = icon->getContentSize().height;
-            icon->setScale(h > 0.f ? 34.f / h : 1.f);
-            icon->setPosition({width / 2.f, width / 2.f});
-            holder->addChild(icon, 1);
-        }
-        else if (auto* fallback = makeLabel("MR", "bigFont.fnt", 0.5f)) {
-            fallback->setPosition({width / 2.f, width / 2.f});
-            holder->addChild(fallback, 1);
-        }
-
-        auto* button = CCMenuItemSpriteExtra::create(holder, target, selector);
-        button->setID("reborn-button"_spr);
-
-        auto* menu = CCMenu::create();
-        menu->setID("reborn-menu"_spr);
-        menu->addChild(button);
-        menu->setPosition({0.f, 0.f});
-
-        // Just past the native pause row (which ends around +158 design units from centre)
-        // rather than in a corner: Eclipse's draggable menu button can occupy any corner, so
-        // the row is the one place it does not cover.
-        auto* director = CCDirector::get();
-        auto const win = director->getWinSize();
-        auto const visible = director->getVisibleSize();
-        // The row sits just past the native pause buttons, but on a narrow window that lands
-        // outside the screen, so it is clamped back inside the visible rect.
-        float const x = std::min(win.width / 2.f + 205.f, visible.width - 30.f);
-        float const y = std::max(win.height / 2.f - 11.f, 30.f);
-        button->setPosition({x, y});
-        menu->setTouchPriority(-600);
-        layer->addChild(menu, 100);
-    }
+    // Just past the native pause row, clamped back inside the visible rect on narrow windows.
+    auto* director = CCDirector::get();
+    auto const win = director->getWinSize();
+    auto const visible = director->getVisibleSize();
+    float const x = std::min(win.width / 2.f + 205.f, visible.width - 30.f);
+    float const y = std::max(win.height / 2.f - 11.f, 30.f);
+    button->setPosition({x, y});
+    menu->setTouchPriority(-600);
+    layer->addChild(menu, 100);
+}
 
 namespace reborn {
     void ensureHud(unsigned int totalFrames) {
-        // The old build created the overlay only after frame 300 *and* only if the overlay
-        // setting was on at that moment, so turning it on later produced no overlay until
-        // the next launch. Create it early and let applyLayout control visibility.
+        // Create early and let applyLayout control visibility; an overlay created only
+        // after frame 300 never appears if the setting is flipped later.
         if (g_hudCreated || totalFrames < 120) return;
         auto* overlay = OverlayManager::get();
         if (!overlay) return;
@@ -1254,4 +1184,3 @@ class $modify(RebornPauseLayer, PauseLayer) {
         openRebornPanel();
     }
 };
-
