@@ -4,12 +4,13 @@ A rendering-focused optimization mod for Geometry Dash 2.2081, built with C++20 
 Geode SDK. It is a successor to [Minimum](https://github.com/ziyyhhk/Minimum), with the
 render path as the main subject rather than a settings collection.
 
-**Status: v2.3.0.** The measured runtime evidence in this
+**Status: v2.4.0.** The measured runtime evidence in this
 README and in `DEVELOPMENT_REPORT.md` - the Engine vs Optimized A/B table and the skip counts -
-comes from earlier in-game runs on a Windows laptop, not from estimates. The custom panel was
+comes from earlier in-game runs on a Windows laptop, not from estimates. Those runs predate the
+v2.4.0 per-quad batch filter, so they do not measure it. The custom panel was
 **removed in v2.3.0**: every setting is edited on the native Geode settings page, which the
-pause menu's MR button opens directly. v2.3.0 was built by CI and installed; FPS impact of its
-new GPU frame-time line is **not measured**.
+pause menu's MR button opens directly. v2.4.0 has not been launched or played yet; FPS impact of
+the batch filter and of the GPU frame-time line is **not measured**.
 
 ## What it does
 
@@ -47,7 +48,32 @@ draw are batched. The cull is useful for unbatched sprites (UI, effects, modded 
 kept as an opt-in in Performance/Extreme, but it is **not** a level-object culler. Keeping it
 on by default would only add checks with no measured saving, so Balanced now leaves it off.
 
-### 3. Particle system fast paths
+### 3. Batched level objects: per-quad filter (on by default)
+
+This is the path GD actually uses for level objects. `CCSpriteBatchNode::draw` submits every
+child in one GL call, so the per-sprite hook can never see them. GD's visibility pass hides an
+object by collapsing its four vertices to `(0,0,0)`, but the batch still uploads and shades
+every hidden quad.
+
+The mod now rebuilds only the index list for that one draw. Zero-area quads (hidden objects,
+collapsed sprites) and quads whose four projected corners lie fully outside the clip volume plus
+a small margin are left out; every kept quad stays in its original atlas position and its
+vertices are byte-identical to the normal draw. The batch keeps its single GL draw, its blend
+state and its normal vertex upload, so overlapping objects blend in the same order.
+
+The filter is fail-open by construction. It runs only for the stock `PositionTextureColor`
+program (a custom shader can move vertices) and only when no grid is active and the projection is
+screen-space. The child `updateTransform` pass runs first, exactly where the original runs it,
+and the quad count is re-read afterwards because that pass can grow the atlas. More than 16,383
+quads, a non-finite coordinate, a pending child sort or an exhausted per-frame budget (24,000
+quads) falls back to the untouched draw. If no quad survives, the GL submission is skipped and
+the atlas dirty flag stays set for the next normal upload. Only `draw()` is affected; `visit()`,
+updates, triggers, physics and object management are untouched.
+
+**Status: not measured in-game.** The counter to watch on the first run is `quads culled /
+scanned` on the Detailed overlay; the level must look identical with the filter on and off.
+
+### 4. Particle system fast paths
 
 * **Idle systems.** `CCParticleSystemQuad::draw` binds a texture and submits a draw even with
   zero live particles. Idle systems are skipped. Simulation is not touched.
@@ -63,7 +89,7 @@ on by default would only add checks with no measured saving, so Balanced now lea
 * **Measured:** Stereo Madness exposes **one particle system per frame** to the hook and it
   stayed on screen for all 601 frames, so 0 draws were skipped. The hook and its counters are
   exercised; this level simply has no off-screen effects. Effect-heavy levels are where the
-  skip can fire, and the benchmark reports it per run so it is not taken on faith.
+  skip can fire, and the Detailed overlay counters report it so it is not taken on faith.
 * **Pool cap.** The requested pool size is clamped *before* the original
   `initWithTotalParticles` runs, so the particle, quad and index buffers are allocated for the
   capped size. Nothing can index past its buffer. Affects systems created after the change.
@@ -72,7 +98,7 @@ on by default would only add checks with no measured saving, so Balanced now lea
 * **Spawn budget (off by default).** After N systems are created in one frame, further
   systems get a pool of 4: bursts look thinner instead of stalling the frame.
 
-### 4. Render gate (experimental, off by default)
+### 5. Render gate (experimental, off by default)
 
 A `CCDirector::drawScene` hook that can skip *rendering* while the scheduler keeps its normal
 rate. A skipped frame runs one scheduler update with the delta the main loop already computed;
@@ -82,23 +108,24 @@ delays what you see by up to one render interval, which is why it is off by defa
 
 While the window is unfocused the same mechanism draws at Background FPS (default 20).
 
-### 5. Windows system tuning
+### 6. Windows system tuning
 
 1 ms timer resolution, opt-out of Windows power throttling (EcoQoS), optional process
 priority. Applied only when the wanted state differs; undone when switched off.
 
-### 6. Performance overlay and diagnostics
+### 7. Performance overlay and diagnostics
 
 FPS (drawn frames, wall clock), average and p95 frame time, 1% low, scheduler updates per
 second, CPU time inside the draw hook, and culling telemetry side by side with what it was
 measured against: scene draws skipped *of* tests performed, particle draws skipped *of*
-systems examined, invisible-sprite skips, capped pools, logic-only frames. A clearly-labelled
-bottleneck *hint* says whether the draw path itself is spending most of the frame. One label,
-updated four times a second, only when the text changed. No per-frame nodes. No GPU timer: a
-blocking GPU query would itself cost frames, so GPU timing is not claimed. The default corner
-is Top Right because GD's attempt counter occupies the top left.
+systems examined, invisible-sprite skips, capped pools, logic-only frames, batch quads culled
+*of* quads scanned. A clearly-labelled bottleneck *hint* says whether the draw path itself is
+spending most of the frame. One label, updated four times a second, only when the text changed.
+No per-frame nodes. The GPU line is a `GL_TIME_ELAPSED` query read back one frame late with a
+non-blocking availability check, so it never stalls the frame; it is available on Windows.
+The default corner is Top Right because GD's attempt counter occupies the top left.
 
-### 7. In-game benchmark (removed in v2.3.0)
+### 8. In-game benchmark (removed in v2.3.0)
 
 > **Removed:** the benchmark button lived on the custom panel, which was deleted in v2.3.0.
 > `benchmark-seconds` is inert and kept only so existing settings files stay valid. Frame-time
@@ -141,7 +168,9 @@ What this does and does not show:
 * **GD batches level objects.** 20,898–24,671 batch draws (35–41 per frame) and 211,759–
   231,543 quads (352–385 per frame) per 10 s are the actual level path. The per-sprite hook
   saw about 3% as many sprites. Any future level-object work has to happen inside the batch
-  node, not in `CCSprite::draw`.
+  node, not in `CCSprite::draw` - which is exactly what v2.4.0's per-quad filter does.
+* **v2.4.0 is not in this table.** The per-quad filter, the shader-trace GD timings and the GPU
+  frame-time line have no measured run yet. Do not read these rows as evidence for them.
 * **Culling fired zero times.** GD's own object management plus batching leaves nothing for
   the per-sprite test. The default now reflects that. Particle culling has no off-screen
   targets on this level either; the counters are there so the claim can be checked on levels
@@ -160,15 +189,16 @@ These were considered and deliberately left out rather than faked:
 * **Replacing GD's batching.** GD already draws level objects through `CCSpriteBatchNode`
   layers (measured above). Merging those batches across textures would require reordering
   translucent objects and rebuilding texture atlases; a partial version that silently changes
-  draw order was judged more dangerous than valuable. A whole-**batch** visibility skip *did*
-  ship in v2.0.0 (see section 14) - it drops a batch only when its own buffer is in sync and
-  entirely off screen, never reorders or rewrites anything. Bismuth (GPL-3.0-or-later, with an
-  additional restriction on generative-AI level generation/modification) was studied only as
-  a design reference; **no Bismuth code, shaders or assets are used here.**
+  draw order was judged more dangerous than valuable. v2.4.0 filters **individual quads**
+  inside each batch instead (section 3): it drops only quads with zero area or fully outside
+  the clip volume, keeps atlas order, blending and the single GL draw, and never rewrites the
+  atlas. GPL-licensed third-party renderers were studied only as a design reference; **no code,
+  shaders or assets from them are used here.**
 * **Dynamic resolution / render scale.** Cocos2d-x 2.2 in this game exposes no safe
   render-target resize path through the SDK; changing window or viewport size is not an
   equivalent and was not attempted. Documented as future work.
-* **GPU timers.** No reliable non-blocking timer is exposed; omitted rather than faked.
+* **A GPU-heavy renderer rewrite.** No compute-shader or multi-pass renderer replaces the
+  engine. The mod changes which existing quads are submitted, not how the engine shades them.
 * **Automatic quality presets by frame time.** The only automatic adjustment is the opt-in
   particle cap (off by default), which changes pool allocation, never simulation.
 * **A "disable glow" switch.** GD's glow is part of the batched level path, so neither the
@@ -181,10 +211,10 @@ Profiles (`Custom`, `Default`, `Balanced`, `Performance`, `Extreme`) write their
 the individual settings once; editing any setting switches the profile to Custom. `Balanced`
 is the default. A profile also selects the renderer mode and both cull modes:
 
-| Profile | Renderer | Scene cull | Particle cull | Batch cull | Particle cap | Background FPS |
+| Profile | Renderer | Scene cull | Particle cull | Batch filter | Particle cap | Background FPS |
 |---|---|---|---|---|---|---|
 | Default | Engine | Off | Off | Off | 256 | 20 |
-| Balanced | Optimized | Off | Conservative | Off | 128 | 20 |
+| Balanced | Optimized | Off | Conservative | On | 128 | 20 |
 | Performance | Optimized | Conservative | Conservative | On | 64 | 15 |
 | Extreme | Optimized | Aggressive | Aggressive | On | 32 | 10 |
 
@@ -267,24 +297,30 @@ Runtime evidence (this laptop, details and numbers above):
 * The skip paths are written to fail open. If the viewport snapshot is missing or
   non-finite, every visibility test answers "draw". A sprite is rejected only when its whole
   quad is outside the expanded viewport; a particle system only when it is Relative or Grouped
-  and its live-particle AABB misses the expanded viewport; a batch only when its quad buffer is
-  in sync and entirely outside it. Idle-system and zero-pixel skips can
-  only fire where the original draw would submit geometry covering no pixels.
+  and its live-particle AABB misses the expanded viewport; a batch quad only when it has zero
+  projected area or its whole projected box is outside the clip volume, and only under the
+  stock shader, with no grid, no pending sort and a screen-space projection. Idle-system,
+  zero-pixel and batch-quad skips can only fire where the original draw would submit geometry
+  covering no pixels.
 
-### Benchmark procedure
+### Trace procedure (v2.4.0)
 
-1. Same level, game version, resolution, graphics settings, FPS cap, background workload.
-2. Pause the level, open the Minimum Reborn panel (MR button), press **Bench**, close the
-   panel and resume. Recording starts on the first unpaused frame; it ends after the
-   configured duration (10 s by default, 3–60 s).
-3. Do at least three runs per configuration and report the range. Runs cover different
-   attempts as the auto-player progresses; that is visible in the batch/quad counts.
-4. Compare `Engine` vs `Optimized`, then `Conservative` vs `Aggressive` culling. Watch
-   average FPS, average frame time, p95, 1% low, draw CPU time, and the scene/particle
-   counters together: a mode that culls more draws but does not move frame time is not
-   helping on that level.
-5. For longer sessions use the overlay in Detailed mode. The benchmark summary is also
-   written to the Geode log.
+The old benchmark UI is gone. The replacement is the `shader-trace` setting plus the Detailed
+overlay:
+
+1. Enable `shader-trace`, start the level, and reproduce the slow section for at least 15 s
+   (the log flushes every 5 s).
+2. Read the `shader-trace` lines for total/redundant program binds and the top programs, and
+   the `gd-trace` line for average/max CPU time in `PlayLayer::updateVisibility`,
+   `updateShaderLayer`, `ShaderLayer::visit` and the batch scan.
+3. Compare against the GPU line on the Detailed overlay. If `gpu` is near the frame time while
+   the `gd-trace` numbers are small, the frame is GPU-bound and no CPU-side cull will fix it.
+   If visibility or `updateShaderLayer` dominates, that is where the next change belongs.
+4. Watch `quads culled`, `batch scans` and `fully culled`: a non-zero, plausible fraction
+   means the filter is doing
+   work. The level must look identical with `batch-culling` on and off.
+5. For longer sessions use the overlay in Detailed mode. There is no automatic result line;
+   the log is the record.
 
 ## Compatibility
 
@@ -306,7 +342,7 @@ MIT. Original code by ziyyhhk. Minimum (MIT) was used as a behavioral reference 
 particle techniques, the render-gate scheduling approach, and the `low-latency` (`glFinish`)
 idea; all are reimplemented for this project and no Minimum code is copied. The No Additional
 Input Delay setting is Minimum Reborn's own design, not inherited from Minimum (see section 13).
-No GPL code from Bismuth is included.
+No GPL-licensed third-party code is included.
 
 
 ## 9. v1.4.0 - the control panel rebuilt, and what the draw path really saves
@@ -406,12 +442,11 @@ path this mod touches.
 * **Other mods.** 51 mods are installed on this machine. One of them (BetterEdit
   v6.10.0-beta.6) crashes the game when the editor pause menu opens, and its stack trace
   contains no frame from this mod. A mod that hooks per-frame drawing can also add cost that
-  shows up as spikes; the new spike counters on the Diagnostics page are how you tell the two
-  apart: if `worst draw` is small while `worst frame` is large, the stall is outside the draw
-  path.
-* **GPU and driver work.** There is no GPU timer here. Skipping a draw removes CPU-side setup
-  and the triangles that would have been submitted, but a fragment-bound frame (large glow,
-  full-screen effects, high resolution) is not something this mod can measure, let alone fix.
+  shows up as spikes; the Detailed overlay's frame-time lines are how you tell the two apart: if
+  draw time stays low while the 1% low drops, the stall is outside the draw path.
+* **GPU and driver work.** `gpu-frame-time` can report the GPU time of the submitted frame, but
+  that is measurement only. A fragment-bound frame (large glow, full-screen effects, high
+  resolution) is not something this mod can fix.
 * **What it does help with, concretely**: hidden and off-screen unbatched sprites and particle
   systems stop paying shader/attribute/texture setup and a draw call; idle particle systems
   stop uploading an empty quad buffer; particle pools are bounded so a burst allocates less;
@@ -512,11 +547,15 @@ launched or played here (the owner asked for code work and will test). No measur
 number exists for the new `glFinish` mode. The batched level-object path was untouched until
 v2.0.0 (see section 14); v2.0.0 has likewise not been launched yet.
 And the project remains Windows-only in its metadata (`mod.json` declares `win` only) even though
-the original Minimum ships for mac/android/ios. As always, Bismuth (GPL-3.0-or-later, with an added
-clause banning its use to facilitate AI-driven GD level generation or modification) is a design
-reference only - **no Bismuth code, shaders or assets are used here.**
+the original Minimum ships for mac/android/ios. As always, GPL-licensed third-party renderers are
+a design reference only - **no code, shaders or assets from them are used here.**
 
 ## 14. v2.0.0 - the batched path, done safely, and a particle cull that sees real data
+
+> **Superseded in v2.4.0:** the whole-batch skip described here was replaced by the per-quad
+> filter in section 3. A batch is no longer dropped as a whole; individual quads that cannot
+> paint are left out while the single GL draw, atlas order and blending stay intact. Read this
+> section as the history of the batch-cull attempt.
 
 The two things this project kept circling are now in the build, both fail-open and both
 measured by construction.
@@ -543,8 +582,8 @@ engine's own truth instead of assumptions:
 A per-frame scan budget of 24,000 quads caps the CPU cost of the feature — past the budget,
 batches draw untested. The margin is 64 world units on top of the viewport. Only `draw()` is
 skipped; `visit()`, updates, triggers and object add/remove are untouched. It is counted in its
-own `batchCulls` counter and shown: Detailed overlay, Culling page ("empty / culled / drawn"),
-"Work avoided", and the benchmark line (`batches N (M quads, K culled)`).
+own `batchCulls` counter; v2.4.0 shows `batch scans`, `batch culls` and `fully culled` on the
+Detailed overlay.
 
 **The particle cull** now measures *live particle data* instead of a worst-case reach cone.
 Every frame it reads the emitter-local positions the draw will submit from `m_pParticles`,
@@ -554,18 +593,24 @@ covered. The old cone could only cull when every possible future position was of
 new test culls exactly when no particle is visible now. Free systems (absolute frame) remain
 always-drawn. The emitter-on-screen shortcut still costs one circle test.
 
-**Profiles**: Performance and Extreme turn `batch-culling` on; Balanced keeps it off, as before
-for the per-sprite scene cull.
+**Profiles**: when this was written, Performance and Extreme turned `batch-culling` on and
+Balanced kept it off. v2.4.0 turns it on in Balanced as well, and the setting can still be
+turned off.
 
 **Not measured**: v2.0.0 has not been launched. The design is argued from the cocos2d-x 2.2
 headers this binary was built against — which is why the skip is bounded and fails open — but
 nobody has watched a level render through it yet. The counter to check on the first run is
-`batches` on the Culling page: `K culled` should move only when chunks are actually off screen,
-and the level must look intact. If it does not, turn `batch-culling` off; the rest of the mod is
-unchanged. No FPS gain is claimed for it; the claim is that off-screen level chunks stop paying
-their submission, plus the physics/inputs/cap claim that holds for every version of this mod.
+`batch scans` / `quads culled` on the Detailed overlay: they should move only when quads are
+actually off screen, and the level must look intact. If it does not, turn `batch-culling` off;
+the rest of the mod is unchanged. No FPS gain is claimed for it; the claim is that off-screen
+level chunks stop paying their submission, plus the physics/inputs/cap claim that holds for
+every version of this mod.
 
 ## 15. v2.1.0 - the suppression pass: program binds and off-screen particle simulation
+
+> **v2.4.0 note:** the program-bind part below was retired. cocos2d already caches binds in
+> `ccGLUseProgram`, so the extra query was redundant; `shader-state-cache` is now an inert
+> legacy key. The particle-suppression feature is unchanged.
 
 Two more opt-in systems, both default off, both counted:
 
@@ -574,9 +619,10 @@ goes through `CCGLProgram::use()`; the hook validates the *live driver state*
 (`glGetIntegerv(GL_CURRENT_PROGRAM)`) before calling the original, and skips the `glUseProgram`
 when the program is already bound. No cache is kept, so a bind that happens anywhere outside the
 hook is picked up by the very next `use()` — the classic stale-cache corruption class cannot
-occur here. `programBindsSkipped` counts the skips and shows on the Detailed overlay. Honest
+occur here. `programBindsSkipped` counted the skips and showed on the Detailed overlay while the feature
+shipped; it is gone in v2.4.0. Honest
 frame: one driver query per candidate skip in exchange for not re-binding; whether the exchange
-wins on your machine has not been measured, which is why it is off by default.
+wins on your machine was never measured, which is why it shipped off by default.
 
 **Suppress Off-Screen Particle Simulation** (`particle-suppression`). v2.0.0 stopped the GPU
 work for off-screen particles but kept the CPU simulation running. This hook skips
@@ -604,11 +650,11 @@ settings already fill those roles and renaming would break saved user settings):
 | Requested | Lives here | Default |
 |---|---|---|
 | master toggle | `enabled` | on |
-| enableCulling | `cull-offscreen-particles` + `particle-cull-mode`, `scene-cull`, `batch-culling`, `editor-culling` | on for particles, off for scene/batch |
+| enableCulling | `cull-offscreen-particles` + `particle-cull-mode`, `scene-cull`, `batch-culling`, `editor-culling` | on for particles/batch, off for scene |
 | particleBudget | `cap-particles` / `particle-cap`, `spawn-budget` | cap 128, budget off |
 | particleCullMode | `particle-cull-mode` (geometry mode) + `particle-suppression` (full suppression) | Conservative, off |
-| shaderStateCache | `shader-state-cache` | off |
-| drawOptimizations | `sprite-fast-path`, `skip-idle-particles`, `batch-culling` | on / on / off |
+| shaderStateCache | `shader-state-cache` | retired in v2.4.0 (inert key) |
+| drawOptimizations | `sprite-fast-path`, `skip-idle-particles`, `batch-culling` | on / on / on |
 
 **Verification**: CI green (Windows, Geode 5.11.2). Not launched in-game; FPS impact: **not
 measured**. The two new hooks are build-clean and their Windows import symbols are present in

@@ -5,9 +5,9 @@
 	},
 	"id": "ziyyhhk.minimum-reborn",
 	"name": "Minimum Reborn",
-	"version": "v2.3.0",
+	"version": "v2.4.0",
 	"developer": "ziyyhhk",
-	"description": "A rendering-focused rebuild of Minimum. All settings live on the native Geode settings page; the pause menu button opens it. Zero-pixel and off-screen draw fast-outs, whole-batch culling of level object layers (opt-in), live-particle culling (and optional off-screen simulation suppression), an editor-only culling policy, a GPU frame-time overlay line (GL_TIME_ELAPSED), and a No Additional Input Delay ordering mode that moves all mod bookkeeping behind the game's update. Physics, input handling and the game's FPS cap are never changed. Windows build for Geometry Dash 2.2081.",
+	"description": "A rendering-focused rebuild of Minimum. All settings live on the native Geode settings page; the pause menu button opens it. Zero-pixel and off-screen draw fast-outs, per-quad filtering inside batched level objects (the layer GD actually uses), live-particle culling (and optional off-screen simulation suppression), an editor-only culling policy, a GPU frame-time overlay line (GL_TIME_ELAPSED), and a No Additional Input Delay ordering mode that moves all mod bookkeeping behind the game's update. Physics, input handling and the game's FPS cap are never changed. Windows build for Geometry Dash 2.2081.",
 	"tags": [
 		"performance",
 		"utility"
@@ -22,7 +22,7 @@
 		},
 		"profile": {
 			"name": "Profile",
-			"description": "Balanced is the default: optimized renderer, particle culling, scene culling off because GD batches level objects, editor culling on. Default keeps the engine renderer and full particle effects. Performance turns on the batch cull (the level-object path); Extreme also lowers the particle cap. Editing a profile-owned setting switches to Custom. Nothing here changes physics, input handling or the game's FPS cap.",
+			"description": "Balanced is the default: optimized renderer, the per-quad batch filter, particle culling, scene culling off because GD batches level objects, editor culling on. Default keeps the engine renderer and full particle effects. Performance lowers the particle cap and adds the conservative scene cull; Extreme goes further. Editing a profile-owned setting switches to Custom. Nothing here changes physics, input handling or the game's FPS cap.",
 			"type": "string",
 			"default": "Balanced",
 			"one-of": [
@@ -53,7 +53,7 @@
 		},
 		"renderer-mode": {
 			"name": "Renderer Mode",
-			"description": "Engine: every draw call goes through the unmodified game renderer; the mod only measures. Optimized: the mod's draw hooks run - zero-pixel sprites, empty batch nodes and eligible off-screen particles are not submitted. Draw order, blending, glow, clipping, shaders and transforms are never changed. This is not a replacement rendering backend.",
+			"description": "Engine: every draw call goes through the unmodified game renderer; the mod only measures. Optimized: the mod's draw hooks run - zero-pixel sprites, empty batch nodes, eligible off-screen particles and non-visible quads inside batched level objects are not submitted. Draw order, blending, glow, clipping, shaders and transforms are never changed. This is not a replacement rendering backend.",
 			"type": "string",
 			"default": "Optimized",
 			"one-of": [
@@ -103,10 +103,10 @@
 			]
 		},
 		"batch-culling": {
-			"name": "Batch Culling",
-			"description": "Opt-in whole-batch culling for level object layers. A CCSpriteBatchNode whose entire vertex buffer lies outside the viewport plus 64 world units is skipped: one GL draw saved for every off-screen batch. The test only runs while the atlas buffer is in sync with the VBO (a dirty buffer or a pending child sort always draws), the box is measured from the actual quads every frame, and the scan is capped at 24,000 quads per frame. Off by default; Performance and Extreme profiles turn it on. Draw-only; nothing is re-batched, reordered or rewritten.",
+			"name": "Batch Object Filtering",
+			"description": "Filters individual quads inside batched level objects, the path GD actually uses. The batch keeps its single GL draw, its blend state and its atlas order; quads that cannot produce a pixel (GD-hidden objects with zero area, or quads fully outside the clip volume plus a small margin) are left out of the index list. Only the stock level shader is filtered - a custom shader or an active grid always draws untouched. The scan is capped at 24,000 quads per frame and reads the same vertices the original draw would upload. On by default; turn it off to see the unfiltered draw path. Draw-only; nothing is re-batched, reordered or rewritten.",
 			"type": "bool",
-			"default": false
+			"default": true
 		},
 		"gpu-frame-time": {
 			"name": "GPU Frame Time (GL_TIME_ELAPSED)",
@@ -119,7 +119,7 @@
 		},
 		"shader-trace": {
 			"name": "Shader Trace (diagnostic)",
-			"description": "Diagnostic counters, never changes behavior. While on, every CCGLProgram::use call is counted (total and redundant, validated against live GL state) and per-batch program binds are tracked; every 5 seconds the Geode log gets one line with the totals and the top 5 GL program objects by bind count. Used to find out which GL path the 2.2 shader triggers take. Off by default; turn it off after collecting the log.",
+			"description": "Diagnostic counters, never changes behavior. While on, every CCGLProgram::use call is counted (total and redundant, validated against live GL state) and per-batch program binds are tracked. Every 5 seconds the Geode log gets two lines: one with bind totals and the top 5 GL program objects, and a 'gd-trace' line with CPU times for PlayLayer/LevelEditorLayer visibility, updateShaderLayer, ShaderLayer::visit and the batch quad scan. Used to find out which part of a 2.2 shader level actually costs time. Off by default; turn it off after collecting the log.",
 			"type": "bool",
 			"platforms": [
 				"win"
@@ -127,8 +127,8 @@
 			"default": false
 		},
 		"shader-state-cache": {
-			"name": "Skip Redundant Program Binds",
-			"description": "Skips glUseProgram when the driver already has this exact program bound, validated against the live GL state on every call - there is no cache to go stale. cocos2d routes every program bind through CCGLProgram::use, which is where program churn actually happens. Windows only. Off by default; watch the Detailed overlay counter to see whether it pays on your machine.",
+			"name": "Skip Redundant Program Binds (retired)",
+			"description": "Inert since v2.4.0. cocos2d already routes every program bind through ccGLUseProgram's internal state cache, so the extra cache this setting used to enable was redundant and its per-bind GL query cost more than it saved. Kept only so existing settings files stay valid; the value does nothing.",
 			"type": "bool",
 			"platforms": [
 				"win"
@@ -177,7 +177,7 @@
 		},
 		"no-input-delay": {
 			"name": "No Additional Input Delay",
-			"description": "Moves every piece of Minimum Reborn bookkeeping out of the pre-update part of the frame: the scheduler counter runs after the game's update, and statistics, benchmark sampling and the Win32 focus probe run after the scene is drawn. The mod then executes no instrumentation before the game processes input and simulation. Ordering change only: it does not modify game input code, physics or the FPS cap, and no hardware latency measurement is claimed.",
+			"description": "Moves every piece of Minimum Reborn bookkeeping out of the pre-update part of the frame: the scheduler counter runs after the game's update, and overlay statistics and the Win32 focus probe run after the scene is drawn. The mod then executes no instrumentation before the game processes input and simulation. Ordering change only: it does not modify game input code, physics or the FPS cap, and no hardware latency measurement is claimed.",
 			"type": "bool",
 			"default": true
 		},
@@ -193,7 +193,7 @@
 		},
 		"editor-culling": {
 			"name": "Editor Culling",
-			"description": "Draw-only visibility and particle culling while the editor is open. Object data, selection, dragging, undo, copy/paste, triggers and saving are never touched. GD batches level objects, so only unbatched editor sprites and particle systems can actually be skipped; the panel shows the real counters.",
+			"description": "Draw-only visibility and particle culling while the editor is open, plus the per-quad batch filter when it is enabled. Object data, selection, dragging, undo, copy/paste, triggers and saving are never touched. The Detailed overlay shows the real counters.",
 			"type": "bool",
 			"default": true
 		},

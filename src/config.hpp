@@ -42,13 +42,11 @@ namespace reborn {
         bool cullOffscreenParticles = true;
         CullMode particleCull = CullMode::Conservative;
         CullMode sceneCull = CullMode::Conservative;
-        // Whole-batch visibility cull: skips a level object batch's single GL draw when
-        // its entire vertex box is outside the view and its buffer is already in sync.
-        // Draw-only. Opt-in; the engine-level write-up is in rendering.cpp section 4.
-        bool batchCulling = false;
-        // Redundant GL program bind elimination. Skips CCGLProgram::use's glUseProgram call
-        // when the driver already has this program bound (validated per call, no cache).
-        bool shaderStateCache = false;
+        // Per-quad filtering inside CCSpriteBatchNode::draw, the path GD uses for level
+        // objects. The batch keeps its single GL draw, blend state and atlas order, but
+        // quads that cannot produce a pixel (zero area or fully off-screen) are left out of
+        // the index list. Draw-only, fail-open; see rendering.cpp section 4.
+        bool batchCulling = true;
         // Full suppression of off-screen particle simulation: update() is skipped for
         // systems whose live particles are fully outside the expanded view. Opt-in.
         bool particleSuppression = false;
@@ -127,14 +125,17 @@ namespace reborn {
 
         // Batch-node telemetry. GD renders level objects through CCSpriteBatchNode, so these
         // counts show how much of the scene actually reaches the per-sprite hook. batchCulls
-        // counts whole batches skipped by the opt-in batch cull.
+        // counts batches where the per-quad filter removed at least one quad;
+        // batchQuadsCulled counts the individual quads left out of those draws.
         std::atomic<std::uint64_t> batchDraws{0};
         std::atomic<std::uint64_t> batchQuads{0};
         std::atomic<std::uint64_t> emptyBatchDrawsSkipped{0};
         std::atomic<std::uint64_t> batchCulls{0};
-        // Redundant-bind elimination (shader-state-cache) and particle suppression
-        // (particle-suppression). Both opt-in and both report through these.
-        std::atomic<std::uint64_t> programBindsSkipped{0};
+        std::atomic<std::uint64_t> batchFullyCulled{0};
+        std::atomic<std::uint64_t> batchScans{0};
+        std::atomic<std::uint64_t> batchQuadsCulled{0};
+        // Particle suppression (particle-suppression) reports through these, as does the
+        // diagnostic shader-trace bind accounting.
         std::atomic<std::uint64_t> particleSimsSuppressed{0};
         std::atomic<std::uint64_t> shaderTraceBinds{0};
         std::atomic<std::uint64_t> shaderTraceRedundant{0};

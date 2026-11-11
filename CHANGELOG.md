@@ -1,5 +1,47 @@
 # Changelog
 
+## v2.4.0
+
+This release makes the optimized renderer reach the path Geometry Dash actually uses for level
+objects. Until now the per-sprite cull examined ~19k sprites and skipped none, because GD
+submits level objects through `CCSpriteBatchNode`. v2.4.0 filters inside that batch draw
+instead.
+
+* **Per-quad batch filtering** (`batch-culling`, bool, **on by default**, also in Balanced).
+  GD's visibility pass hides an object by collapsing its four vertices to `(0,0,0)`, but the
+  batch still uploads and shades every hidden quad. The mod now rebuilds only the index list
+  for `CCSpriteBatchNode::draw`: zero-area quads and quads whose four projected corners lie
+  fully outside the clip volume (plus a small margin) are left out. The batch keeps its single
+  GL draw, its blend state, its atlas order and its normal vertex upload, so kept quads are
+  byte-identical and overlapping objects blend in the same sequence.
+* **Safety gates, all fail-open.** Only the stock `PositionTextureColor` program is filtered
+  (a custom shader can move vertices); an active grid, a pending child sort, a non-screen-space
+  projection, non-finite coordinates, more than 16,383 quads or an exhausted per-frame budget
+  all fall back to the original draw. The child `updateTransform` pass still runs first and the
+  quad count is re-read afterwards because that pass can grow the atlas. The filtered list is
+  the mod's own client-side index array; the atlas index buffer is never rewritten, and the
+  vertex VBO receives only the same full-range dirty upload the original draw performs.
+  When no quad survives, the GL submission is skipped and the dirty flag is left set for the
+  next normal upload.
+* **Balanced now turns the batch filter on.** Scene culling stays off because the batched path
+  is where level objects live; the filter is bounded by the 24,000-quad scan budget, so it is a
+  safe default rather than an opt-in extra.
+* **`shader-state-cache` retired.** cocos2d already routes `CCGLProgram::use` through
+  `ccGLUseProgram`'s state cache (`CC_ENABLE_GL_STATE_CACHE`), so the extra check - and its
+  per-bind `glGetIntegerv` - was redundant. The setting key remains in `mod.json` as an inert
+  legacy key; the counters it used to drive are gone.
+* **Shader trace now reports GD-side CPU time.** In addition to program-bind totals, the
+  `gd-trace` log line reports average/max wall time for `PlayLayer::updateVisibility`,
+  `LevelEditorLayer::updateVisibility`, `GJBaseGameLayer::updateShaderLayer`,
+  `ShaderLayer::visit` and the batch scan. This is how the next measurement separates
+  visibility CPU, shader-layer CPU and GPU cost on a level like The Jawbreaker.
+* **Counters and overlay**: new `batchCulls` (batches with at least one quad removed),
+  `batchFullyCulled`, `batchScans` and `batchQuadsCulled`. The Detailed overlay shows quads
+  culled, batch scans and fully culled batches, and still reports trace binds.
+* **Not measured.** No in-game launch, FPS or 1% low number exists for v2.4.0 yet, and the
+  Jawbreaker `shader-trace` log has not been captured. The release claims only what the code
+  does; performance claims stay pending until the owner runs it.
+
 ## v2.3.0
 
 The custom panel is deleted. This release is the answer to "the UI is unusable": every
@@ -56,8 +98,9 @@ a full rebuilt as part of this version. See the README for the honest status of 
 Two more opt-in systems, both implemented fail-open and both report through their own counters.
 Physics, timing, input handling, draw order, blending and glow are unchanged.
 
-* **Skip Redundant Program Binds** (`shader-state-cache`, bool, default off, Windows). The
-  original GL dance per node happens inside `CCGLProgram::use`; the hook there checks the live
+* **Skip Redundant Program Binds** (`shader-state-cache`, bool, default off, Windows). Retired
+  in v2.4.0; see the v2.4.0 entry. The original GL dance per node happens inside
+  `CCGLProgram::use`; the hook there checks the live
   driver state (`glGetIntegerv(GL_CURRENT_PROGRAM)`) and skips the `glUseProgram` call when the
   program is already bound. There is no cached assumption anywhere, so a bind done by anyone
   outside the hook is picked up by the next `use()` - it cannot go stale. Counted in the new

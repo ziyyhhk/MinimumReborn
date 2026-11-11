@@ -2,9 +2,10 @@
 
 The Phase 5 brief asks the implementation to identify seven things about its shader-related
 optimization instead of shipping a toggle with a convincing name. This file answers them for
-v1.5.2 (the current shader-culling behaviour; v1.6.0 changed nothing here - it added only the
-`glFinish` low-latency drain, which is not a culling change), and states plainly where the
-engine does not allow what was asked.
+v2.4.0 (the current shader-culling behaviour). Sections 9-11 describe the earlier whole-batch
+and program-bind attempts and are kept as history; section 12 is the per-quad filter that
+replaced the whole-batch skip, and states plainly where the engine does not allow what was
+asked.
 
 ## 1. Which shader-related operations are avoided
 
@@ -29,6 +30,7 @@ That is the honest content of "avoiding shader setup for objects that will not b
 | Off-screen sprite skip | same, via `spriteOffScreen` | per sprite, at draw time |
 | Idle / zero-opacity / off-screen particle skip | `ParticleDrawFastPath::draw` | per particle system |
 | Empty batch skip | `BatchNodeTelemetry::draw` | per batch node |
+| Per-quad batch filter | `BatchNodeTelemetry::draw` + `filterBatchQuads` | per batch node, this frame's vertices |
 | Viewport snapshot used by all of them | `renderFrameBegin` | once per frame |
 | Editor vs gameplay policy | `renderFrameBegin` (one `LevelEditorLayer::get()` per frame) | once per frame |
 
@@ -50,8 +52,12 @@ No decision is taken inside an input callback, a scheduler callback, or a node's
   acceleration, start/end radius, position variance, source offset and particle size - scaled
   to world units. Free and grouped systems are always drawn because no safe bound exists. A
   center-inside shortcut keeps the common case at one circle test.
-* **Batches**: only the empty case. A whole-batch visibility test was implemented in v1.5.0
-  and removed in v1.5.1; section 8 explains the two failure modes the review found.
+* **Batches**: every quad is projected through the current P * MV. A quad is left out of the
+  index list when its four projected corners have zero area (GD's hidden objects) or when the
+  whole projected box is outside the clip volume plus 0.005 NDC. Kept quads stay in atlas
+  order. Custom shaders, active grids, non-screen-space projections, non-finite data, more
+  than 16,383 quads and an exhausted scan budget all fall back to the original draw. Section
+  12 has the full gate list.
 
 * **Anything uncertain** - missing parent, missing atlas, empty or degenerate bounds,
   non-finite numbers, unknown position type - answers "draw".
@@ -82,7 +88,8 @@ A draw is skipped only when the submission cannot produce a pixel this frame:
   a program that ignores vertex alpha could still paint, so those nodes are drawn;
 * entirely outside the viewport plus a margin, using a bound that contains the object at any
   rotation and scale;
-* a batch whose measured box contains every vertex it would have submitted.
+* a batch quad whose projected corners are collinear (zero area) or whose whole projected box
+  lies outside the clip volume; kept quads keep their exact vertices and atlas position.
 
 Nothing is reordered or merged, so transparency and glow ordering cannot change. `visit()`
 still runs on every node, so animations, triggers, children and physics are untouched even when
@@ -90,20 +97,21 @@ a draw is skipped - which is why an object that scrolls back on screen looks ide
 
 ## 7. What measurements demonstrate it
 
-* The panel's Culling and Render pages report `skipped / tested` per second and per session,
-  and `culled / measured / drawn` for batches. A counter only moves when a `draw()` call is
-  genuinely not submitted, so it counts skipped submissions rather than estimating savings.
-* The Diagnostics page reports frames over 25 ms, worst frame and worst `drawScene` time, so a
-  spike can be attributed to the draw path or ruled out.
-* The in-game benchmark records average, p50, p95, 1% low, variability, CPU draw time and the
-  counter deltas over the same window, and writes them to the Geode log.
+* The Detailed overlay reports `batch culls`, `quads culled`, `batch scans` and `fully culled`
+  for the batch path, plus the per-second skip rates for the sprite and particle hooks. A
+  counter only moves when a `draw()` call is genuinely not submitted, or a quad is genuinely
+  omitted from the index list, so it counts real removals rather than estimated savings.
+* The Detailed overlay shows average/p95 and the 1% low frame time and, when `gpu-frame-time` is
+  on, the GPU frame-time line, so a spike can be attributed to the draw path, the GPU, or ruled
+  out.
+* The `shader-trace` setting adds `shader-trace` and `gd-trace` log lines every 5 s: program
+  binds per batch, and wall-clock timings for visibility, the shader layer, `ShaderLayer::visit`
+  and the batch scan. It is a diagnostic and is off by default.
 * Measured so far (Stereo Madness, 60 FPS cap, 10 s per run): identical FPS either way, the
   optimized path costing +0.07 ms CPU per frame while removing 1,830 zero-pixel sprite draws
-  per 10 s, with 0 scene and 0 particle culls because every level object was batched. That last
-  number is why a whole-batch cull was attempted in v1.5.0; the review in section 8 found two
-  ways it could hide an entire batch, so it was **removed in v1.5.1** and only the empty-batch
-  skip remains. Batch-level savings have therefore **never been measured in a live level**, and
-  no such claim is made here.
+  per 10 s, with 0 scene and 0 particle culls because every level object was batched. That
+  number is why v2.4.0 filters quads inside the batch itself; it is not a measurement of
+  v2.4.0, and nobody has watched a v2.4.0 build render a level yet, so no FPS claim is made.
 
 ## 8. The batch-level test that was built and then removed
 
@@ -134,6 +142,10 @@ this mod is the empty-buffer skip, which cannot hide anything.
 
 ## 9. v2.0.0: the batch path, closed properly
 
+> **Superseded in v2.4.0 by section 12.** The whole-batch skip is gone; quads are filtered
+> individually and the batch's single GL draw is kept. Section 9 is the design that made the
+> batched path reachable without freezing the atlas.
+
 Section 8 removed the whole-batch cull because two failure modes could not be ruled out. Both are
 now closed by construction, using the cocos2d-x 2.2 headers this binary was built against
 (`loader/include/Geode/cocos/...` in the SDK this mod compiles against), not by assumption:
@@ -153,10 +165,10 @@ now closed by construction, using the cocos2d-x 2.2 headers this binary was buil
 
 Two further bounds: a per-frame scan budget of 24,000 quads caps the CPU cost of the feature
 (once spent, batches are drawn untested), and any missing or non-finite data answers "draw".
-The whole-batch cull is opt-in (`batch-culling`, off by default; on in Performance/Extreme) and
-is counted in its own `batchCulls` counter. Like every draw skip in this mod the effect is
-measured, not assumed: the Detailed overlay shows the total, the Culling page and the benchmark
-result line show it too.
+At the time, the whole-batch cull was opt-in (`batch-culling`, off by default; on in
+Performance/Extreme) and is counted in its own `batchCulls` counter. Like every draw skip in this mod the effect is
+measured, not assumed. v2.4.0 turns `batch-culling` on in Balanced and shows the counters on
+the Detailed overlay.
 
 The particle cull was rebuilt the same way. It now measures the live particle AABB from
 `m_pParticles` every frame (Relative and Grouped systems - both live in emitter-local space),
@@ -165,6 +177,10 @@ cone could only reject a system when every possible future position was off scre
 rarely true. Free systems remain drawn: their absolute frame has no transform safe to assume.
 
 ## 10. The limitation, stated plainly
+
+> **v2.4.0 note:** section 12 replaces the whole-batch skip with per-quad filtering. A batch is
+> normally drawn with one call, but individual quads that cannot paint are omitted from the
+> index list. The batch buffer is still never rewritten, reordered or merged.
 
 Note: section 9 (v2.0.0) adds an opt-in, fail-open whole-batch skip on top of what is said
 there. The batch buffer is still never rewritten, reordered or merged - a batch is either drawn
@@ -180,6 +196,11 @@ transform is available and the bound is exact - measures the removal, and leaves
 ordering and shaders alone. Anything beyond that would be a claim, not an implementation.
 
 ## 11. v2.1.0: redundant program binds (shader-state-cache)
+
+> **Retired in v2.4.0.** cocos2d already routes every bind through `ccGLUseProgram`, whose
+> `CC_ENABLE_GL_STATE_CACHE` path skips an unchanged program. The extra per-bind GL query was
+> redundant and is removed. The setting key stays in `mod.json` as an inert legacy key; the
+> `programBindsSkipped` counter is gone and only trace-only bind counting remains.
 
 The per-node GL program churn happens inside `CCGLProgram::use()`. The hook asks the driver for
 `GL_CURRENT_PROGRAM` on every call and skips `glUseProgram` only when it matches the program's
@@ -197,3 +218,61 @@ standard programs at engine init).
 Section 9 added the whole-batch draw skip and v2.1.0 adds a redundant-bind skip and off-screen
 particle simulation suppression; the invariant is unchanged: a batch is drawn in full or not at
 all, particles are simulated or not at all, and nothing is ever rewritten, reordered or merged.
+
+## 12. v2.4.0: per-quad filtering inside the batch (current behaviour)
+
+The whole-batch skip removed a submission only when *every* quad in the batch was off screen.
+On a shader-heavy level the batch is on screen while many of its quads are not: GD's own
+visibility pass collapses hidden objects to four `(0,0,0)` vertices, and those quads are still
+uploaded, shaded and discarded. The per-quad filter attacks exactly that.
+
+**What is avoided.** For each dropped quad: the vertex shading for four vertices and the two
+triangles they would form. The batch's program bind, attribute setup, texture bind and single
+`glDrawElements` still happen when at least one quad survives; the saving is per quad, not per
+batch. When no quad survives, the GL submission is skipped entirely.
+
+**How the decision is made.** Inside `CCSpriteBatchNode::draw`, after the child
+`updateTransform` pass (the same place the original runs it), the mod reads the atlas quads and
+projects all four corners through the current projection and modelview matrices. A quad is
+dropped when:
+
+* its projected area is zero (collinear or collapsed corners), or
+* its whole projected box is outside `[-1 - 0.005, 1 + 0.005]` in NDC on either axis.
+
+Surviving quads are written to a static `GLushort` index array in atlas order and submitted
+with a client-side index pointer after unbinding the element buffer. The vertex buffer is
+uploaded for the full `[0, total)` range whenever the atlas is dirty, exactly as the original
+draw would, so a later unfiltered draw sees identical bytes. The index VBO is never modified.
+
+**The gates (all fail-open).** The filter runs only when all of these hold:
+
+* the batch's shader program is the stock `kCCShader_PositionTextureColor` (a custom shader can
+  displace vertices, so its quads are never judged by their original positions);
+* no active `CCGridBase` on the batch (a grid redirects rendering);
+* no pending `m_bManualSortAllChildrenDirty` (a sort rebuilds quad order inside draw);
+* a screen-space projection: finite matrix and a w row of `(0,0,0,1)`;
+* `1 <= total <= 16,383` and `total <= capacity` (16-bit indices), with non-null quads,
+  texture and both VBO names;
+* the per-frame scan budget (24,000 quads) still covers this batch.
+
+Any failed check, non-finite coordinate, `w <= 0` or unusual projection draws the batch
+untouched through the original tail. The filter never allocates, never reorders and never
+changes blend state.
+
+**Why this is not "rewriting GD's buffer".** The atlas vertices and the atlas index VBO are
+untouched. The only new data is the mod's own index list, used for one draw call, and the normal
+dirty upload is preserved byte-for-byte. GD's next frame starts from the same state it would
+have had without the mod.
+
+**What is measured.** `batchScans`, `batchCulls` (batches with at least one quad removed),
+`batchFullyCulled` and `batchQuadsCulled`; the Detailed overlay shows quads culled, batch
+scans and fully culled batches.
+The `gd-trace` shader-trace line adds the scan's average time. **No in-game run has measured
+the pixel or frame-time effect yet**, so no FPS claim is made. The claim is the mechanism: a
+non-visible quad is not submitted, and the counters prove when that happened.
+
+**The remaining limit.** Quads are filtered, not merged: the batch still issues one draw per
+texture atlas, and GPU fragment cost for visible quads is unchanged. If the frame is
+fragment-bound (large glow, full-screen shader effects) this filter cannot help, which is why
+the GPU line and the `gd-trace` CPU timings ship together: they decide where the next change
+belongs.

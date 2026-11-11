@@ -61,15 +61,14 @@ namespace reborn {
         // Default takes the game's draw path unchanged, so the original renderer is what you
         // get; the other profiles turn on the optimized draw path with increasing culling.
         //
-        // Balanced leaves the scene cull and the batch cull off. Runtime telemetry (phase 3)
-        // showed that GD draws level objects through CCSpriteBatchNode, so the per-sprite cull
-        // examined ~19k sprites and skipped none; keeping it on by default would add checks
-        // with no measured saving. The stronger profiles turn the batch cull on: it is the one
-        // test that can see the batched path, it is bounded by a per-frame scan budget, and
-        // the benchmark can report exactly how much it removes.
+        // Balanced turns on the per-quad batch filter. Runtime telemetry showed that GD draws
+        // level objects through CCSpriteBatchNode, so per-sprite culling cannot see them; the
+        // batch filter works inside the batched path instead. It removes only quads that
+        // cannot produce a pixel, keeps atlas order and blend state, and is bounded by a
+        // per-frame scan budget, so it is safe as a default rather than an opt-in extra.
         constexpr ProfileValues kProfiles[] = {
             {"Default",     256, 20, false, "Off",          "Off",          false},
-            {"Balanced",    128, 20, true,  "Off",          "Conservative", false},
+            {"Balanced",    128, 20, true,  "Off",          "Conservative", true},
             {"Performance",  64, 15, true,  "Conservative", "Conservative", true},
             {"Extreme",      32, 10, true,  "Aggressive",   "Aggressive",   true},
         };
@@ -255,7 +254,6 @@ namespace reborn {
         c.particleCull = parseCullMode(mod->getSettingValue<std::string>("particle-cull-mode"));
         c.sceneCull = parseCullMode(mod->getSettingValue<std::string>("scene-cull"));
         c.batchCulling = mod->getSettingValue<bool>("batch-culling");
-        c.shaderStateCache = mod->getSettingValue<bool>("shader-state-cache");
         c.particleSuppression = mod->getSettingValue<bool>("particle-suppression");
         c.shaderTrace = mod->getSettingValue<bool>("shader-trace");
         c.gpuFrameTime = mod->getSettingValue<bool>("gpu-frame-time");
@@ -325,11 +323,12 @@ namespace reborn {
         mod->setSettingValue<bool>("cull-offscreen-particles", true);
         mod->setSettingValue<std::string>("particle-cull-mode", "Conservative");
         mod->setSettingValue<std::string>("scene-cull", "Off");
-        mod->setSettingValue<bool>("batch-culling", false);
+        mod->setSettingValue<bool>("batch-culling", true);
+        // Retired key: cocos2d already caches program binds, so there is nothing to opt into.
+        // Reset it to false so an old install does not leave a misleading value behind.
         mod->setSettingValue<bool>("shader-state-cache", false);
         mod->setSettingValue<bool>("particle-suppression", false);
         mod->setSettingValue<bool>("shader-trace", false);
-        mod->setSettingValue<bool>("gpu-frame-time", true);
         mod->setSettingValue<bool>("gpu-frame-time", true);
         mod->setSettingValue<bool>("cap-particles", true);
         mod->setSettingValue<int64_t>("particle-cap", static_cast<int64_t>(kDefaultParticleCap));

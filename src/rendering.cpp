@@ -2,14 +2,26 @@
 #ifdef GEODE_IS_WINDOWS
 #include <gl/GL.h>
 #endif
+#include <Geode/cocos/effects/CCGrid.h>
+#include <Geode/cocos/kazmath/include/kazmath/GL/matrix.h>
+#include <Geode/cocos/shaders/CCGLProgram.h>
+#include <Geode/cocos/shaders/CCShaderCache.h>
+#include <Geode/cocos/shaders/ccGLStateCache.h>
+#include <Geode/cocos/textures/CCTextureAtlas.h>
 #include <Geode/modify/CCGLProgram.hpp>
 #include <Geode/modify/CCParticleSystem.hpp>
 #include <Geode/modify/CCParticleSystemQuad.hpp>
 #include <Geode/modify/CCSprite.hpp>
 #include <Geode/modify/CCSpriteBatchNode.hpp>
+#include <Geode/modify/GJBaseGameLayer.hpp>
+#include <Geode/modify/LevelEditorLayer.hpp>
+#include <Geode/modify/PlayLayer.hpp>
+#include <Geode/modify/ShaderLayer.hpp>
+#include <Geode/utils/cocos.hpp>
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include "config.hpp"
 #include "rendering.hpp"
@@ -82,36 +94,41 @@ using namespace geode::prelude;
 // draw-only.
 //
 // ---------------------------------------------------------------------------------------
-// 4. Batch culling (the level objects themselves)
+// 4. Batched level objects: per-quad filtering
 // ---------------------------------------------------------------------------------------
-// Level objects are submitted through CCSpriteBatchNode::draw, one call per batch. This is
-// where the bulk of a level lives, and it was deliberately untouched in every previous
-// release because two failure modes existed. Both are closed here, so the whole-batch skip
-// now ships behind the `batch-culling` switch (default off, opt-in, measurement first):
+// Level objects are submitted through CCSpriteBatchNode::draw, one GL draw per batch. A
+// batch can hold thousands of quads. GD's visibility pass hides an object by collapsing its
+// four vertices to (0,0,0), but the batch still uploads and shades every hidden quad.
 //
-//   * "the scan covers fewer entries than draw() submits" - read the real member truth
-//     instead of assuming: drawQuads() submits exactly getTotalQuads() quads (CCTextureAtlas
-//     can draw nothing more), and children added via addSpriteWithoutQuad never got an atlas
-//     slot at all - they draw through their own CCSprite::draw path, which this does not
-//     touch. The scan reads [0, getTotalQuads()) and all four corners of every quad, so the
-//     measured box contains everything the draw would submit.
+// This path keeps the batch's single GL draw, its blend state and its atlas order, and
+// rewrites only the index list so that quads which cannot produce a pixel are not submitted:
 //
-//   * "skipping draw() freezes the VBO and the cull becomes self-sustaining" - the engine
-//     marks CCTextureAtlas::m_bDirty when the VBO needs an upload. This hook never skips
-//     while that flag is set (the skipped draw is exactly where the upload happens), nor
-//     while the batch reports m_bManualSortAllChildrenDirty (a pending sort rebuilds the
-//     quad order inside the draw). Only a batch whose buffer is already in sync can be
-//     skipped, and then the next frame is identical to this one.
+//   * zero-area quads (GD's hidden objects, collapsed sprites) are dropped;
+//   * quads whose four projected corners lie fully outside the clip volume plus a small
+//     margin are dropped. Every surviving quad keeps its original position in atlas order,
+//     so overlapping objects blend in exactly the same sequence as before.
 //
-// The box scan is also capped: a per-frame budget of 24,000 quads bounds the CPU cost of
-// the feature no matter how big the level is; once the budget is spent, batches are drawn
-// without further testing until the next frame. Empty batches (zero quads) keep the old
-// empty-batch skip, which is unconditional.
+// Safety rules, all fail-open:
+//   * only the stock PositionTextureColor program is filtered. A custom shader can move
+//     vertices, so a batch using one is drawn untouched.
+//   * no active grid; a grid redirects rendering and invalidates the screen-space test.
+//   * the child updateTransform pass runs first - exactly where the original runs it - and
+//     getTotalQuads() is read again afterwards because the pass can grow the atlas.
+//   * each vertex is projected through P * MV. A non-finite value, w <= 0, an unusual
+//     projection or more than 16,383 quads falls back to the original draw.
+//   * the filtered index list lives in the mod's own buffer. The atlas's VBO and index
+//     buffer are never modified, except for the normal dirty upload, which uploads the same
+//     full [0,total) range the original draw would.
+//   * a per-frame scan budget of 24,000 quads bounds the CPU cost. A batch that does not fit
+//     in the remaining budget is drawn untested.
+//   * if no quad survives, the GL submission is skipped entirely. The atlas dirty flag is
+//     left set, so the next draw that needs the buffer uploads it once, normally.
 //
-// Only draw() is skipped; visit(), updates, triggers and remove/add logic are untouched.
+// Only draw() is affected; visit(), updates, triggers, physics and object management are
+// untouched.
 //
 // ---------------------------------------------------------------------------------------
-// 6. What "shader culling" can honestly mean here
+// 5. What "shader culling" can honestly mean here
 // ---------------------------------------------------------------------------------------
 // cocos2d-x sets up the shader per node inside draw(): CCGLProgram activation, the vertex
 // attribute pointers, the texture bind and only then the draw call. Every skip in this file
@@ -121,8 +138,8 @@ using namespace geode::prelude;
 //   * the draw call itself (and for a particle system, the per-frame quad buffer rebuild),
 //   * the fragment work those triangles would have produced.
 // That is the defensible version of "avoiding shader setup for objects that will not be
-// rendered", and it is measured: the counters on the Render and Culling pages only move when
-// a draw() call is really not submitted.
+// rendered", and it is measured: the counters on the Detailed overlay only move when a draw()
+// call is really not submitted.
 //
 // What is NOT done, because the engine does not allow it safely from a mod:
 //   * no shader is compiled, replaced or re-bound, and no GL program cache is kept - the
@@ -134,9 +151,9 @@ using namespace geode::prelude;
 //     the node position covering the whole diagonal, particle systems add their worst-case
 //     reach (speed, life, acceleration, radius, position variance and particle size) scaled
 //     to world units, and both keep a margin;
-//   * batched level objects are not touched: CCSpriteBatchNode submits every child in one
-//     call and never runs the per-sprite path, so a mod cannot drop individual quads from it
-//     without rewriting the atlas buffer, which would break the next frame's cached geometry.
+//   * no geometry is rewritten in the atlas and no batch is split, merged or reordered. The
+//     filtered path only selects a subset of the atlas's existing quads through its own
+//     index list, in atlas order; every kept quad is byte-identical to the original draw.
 //
 // What this is NOT: a replacement renderer. Draw order, blending, glow, clipping, shaders and
 // texture state are untouched because every kept draw still goes through the original
@@ -404,30 +421,70 @@ namespace {
         return !circleTouches(center.x, center.y, radius, margin);
     }
 
-    // True when every quad in a batch's vertex buffer lies entirely outside the expanded
-    // view, so the batch's single GL submission can be skipped. Only called when the atlas
-    // is in sync (not dirty, no pending child sort) and the scan budget allows; anything
-    // unexpected answers "draw". Quad positions live in the batch node's local space, so
-    // the local box is mapped through the batch's own world basis as a circle.
-    constexpr double kBatchMargin = 64.0;
+    // ---------------------------------------------------------------------------------------
+    // Batched level objects: per-quad filter
+    // ---------------------------------------------------------------------------------------
+    // The draw call only sees an index list. Rebuilding that list lets one batch keep its
+    // single GL submission while dropping quads that cannot paint. The scan runs on the
+    // vertex data the original draw would submit, so there is no separate visibility model
+    // to disagree with the engine.
+    constexpr unsigned int kMaxFilterQuads = 16383;  // 4 * 16383 + 3 = 65535
+    constexpr double kFilterNdcMargin = 0.005;
 
-    bool batchOffScreen(CCSpriteBatchNode* batch, double margin) {
-        CCTextureAtlas* atlas = batch->getTextureAtlas();
-        if (!atlas) return false;
-        unsigned int const total = atlas->getTotalQuads();
-        if (total == 0) return false;  // empty batches use the empty-batch skip
-        if (atlas->isDirty()) return false;  // the skipped draw is where the VBO upload happens
-        if (batch->m_bManualSortAllChildrenDirty) return false;  // a pending sort rebuilds the buffer inside draw()
-        if (g_batchScanBudget == 0) return false;
+    // Static storage: one consumer on the main thread and a fixed upper bound, so the draw
+    // path never allocates.
+    GLushort g_filterIndices[kMaxFilterQuads * 6];
+
+    bool projectionIsScreenSpace(kmMat4 const& projection) {
+        for (float const value : projection.mat) {
+            if (!std::isfinite(value)) return false;
+        }
+        // Standard cocos2d 2D projection: w row = (0,0,0,1). A 3D camera, a grid or a custom
+        // projection fails this test and gets the original draw.
+        return std::fabs(projection.mat[3]) < 1e-6f
+            && std::fabs(projection.mat[7]) < 1e-6f
+            && std::fabs(projection.mat[11]) < 1e-6f
+            && std::fabs(projection.mat[15] - 1.f) < 1e-6f;
+    }
+
+    bool stockSpriteProgram(CCSpriteBatchNode* batch) {
+        CCGLProgram* program = batch->getShaderProgram();
+        if (!program) return false;
+        CCShaderCache* cache = CCShaderCache::sharedShaderCache();
+        return cache && program == cache->programForKey(kCCShader_PositionTextureColor);
+    }
+
+    // Checks that can be made before the child transform pass. The caller re-checks the quad
+    // count afterwards because updateTransform can grow the atlas.
+    bool batchFilterEligible(CCSpriteBatchNode* batch, CCTextureAtlas* atlas, unsigned int total) {
+        if (!atlas || total == 0 || total > kMaxFilterQuads) return false;
+        if (total > atlas->getCapacity()) return false;
+        if (!atlas->getQuads() || !atlas->getTexture()) return false;
+        if (atlas->m_pBuffersVBO[0] == 0 || atlas->m_pBuffersVBO[1] == 0) return false;
+        if (batch->m_bManualSortAllChildrenDirty) return false;
+        CCGridBase* grid = batch->getGrid();
+        if (grid && grid->isActive()) return false;
+        if (!stockSpriteProgram(batch)) return false;
+        return g_batchScanBudget >= total;
+    }
+
+    // Returns the number of quads written to `indices`, or `total` when the projection is not
+    // screen-space (fail open). The caller has already checked the budget and the quad count.
+    unsigned int filterBatchQuads(CCTextureAtlas* atlas, unsigned int total, GLushort* indices) {
+        kmMat4 projection{};
+        kmMat4 modelview{};
+        kmGLGetMatrix(KM_GL_PROJECTION, &projection);
+        kmGLGetMatrix(KM_GL_MODELVIEW, &modelview);
+        if (!projectionIsScreenSpace(projection)) return total;
+
+        kmMat4 mvp{};
+        kmMat4Multiply(&mvp, &projection, &modelview);
 
         ccV3F_C4B_T2F_Quad const* quads = atlas->getQuads();
-        if (!quads) return false;
+        if (!quads) return total;
 
-        double minX = 0.0, maxX = 0.0, minY = 0.0, maxY = 0.0;
+        unsigned int kept = 0;
         for (unsigned int i = 0; i < total; ++i) {
-            if (g_batchScanBudget == 0) return false;  // budget spent: draw untested, claim nothing
-            --g_batchScanBudget;
-
             ccV3F_C4B_T2F_Quad const& quad = quads[i];
             float const xs[4] = {
                 quad.tl.vertices.x, quad.bl.vertices.x, quad.tr.vertices.x, quad.br.vertices.x
@@ -435,36 +492,116 @@ namespace {
             float const ys[4] = {
                 quad.tl.vertices.y, quad.bl.vertices.y, quad.tr.vertices.y, quad.br.vertices.y
             };
-            for (int v = 0; v < 4; ++v) {
-                if (!isFinite(xs[v]) || !isFinite(ys[v])) return false;
-            }
+            float const zs[4] = {
+                quad.tl.vertices.z, quad.bl.vertices.z, quad.tr.vertices.z, quad.br.vertices.z
+            };
+
+            double ndcX[4] = {};
+            double ndcY[4] = {};
+            double minX = 0.0, maxX = 0.0, minY = 0.0, maxY = 0.0;
+            bool usable = true;
+
             for (int v = 0; v < 4; ++v) {
                 double const x = xs[v];
                 double const y = ys[v];
-                if (i == 0 && v == 0) {
-                    minX = maxX = x; minY = maxY = y;
+                double const z = zs[v];
+                double const cx = mvp.mat[0] * x + mvp.mat[4] * y + mvp.mat[8] * z + mvp.mat[12];
+                double const cy = mvp.mat[1] * x + mvp.mat[5] * y + mvp.mat[9] * z + mvp.mat[13];
+                double const cw = mvp.mat[3] * x + mvp.mat[7] * y + mvp.mat[11] * z + mvp.mat[15];
+                if (!std::isfinite(cx) || !std::isfinite(cy) || !std::isfinite(cw) || cw <= 1e-6) {
+                    usable = false;
+                    break;
+                }
+                ndcX[v] = cx / cw;
+                ndcY[v] = cy / cw;
+                if (!std::isfinite(ndcX[v]) || !std::isfinite(ndcY[v])) {
+                    usable = false;
+                    break;
+                }
+                if (v == 0) {
+                    minX = maxX = ndcX[v];
+                    minY = maxY = ndcY[v];
                 } else {
-                    minX = std::min(minX, x); maxX = std::max(maxX, x);
-                    minY = std::min(minY, y); maxY = std::max(maxY, y);
+                    minX = std::min(minX, ndcX[v]);
+                    maxX = std::max(maxX, ndcX[v]);
+                    minY = std::min(minY, ndcY[v]);
+                    maxY = std::max(maxY, ndcY[v]);
                 }
             }
+
+            if (usable) {
+                bool const outside =
+                    maxX < -1.0 - kFilterNdcMargin || minX > 1.0 + kFilterNdcMargin ||
+                    maxY < -1.0 - kFilterNdcMargin || minY > 1.0 + kFilterNdcMargin;
+                // The quad is a parallelogram (tl, bl, tr, br). Collinear edges mean no
+                // pixels; GD's hidden objects are four identical corners.
+                double const ax = ndcX[1] - ndcX[0];
+                double const ay = ndcY[1] - ndcY[0];
+                double const bx = ndcX[2] - ndcX[0];
+                double const by = ndcY[2] - ndcY[0];
+                double const area = std::fabs(ax * by - ay * bx);
+                if (outside || area < 1e-12) continue;
+            }
+
+            GLushort const base = static_cast<GLushort>(i * 4);
+            GLushort* out = indices + kept * 6;
+            out[0] = base;
+            out[1] = static_cast<GLushort>(base + 1);
+            out[2] = static_cast<GLushort>(base + 2);
+            out[3] = static_cast<GLushort>(base + 3);
+            out[4] = static_cast<GLushort>(base + 2);
+            out[5] = static_cast<GLushort>(base + 1);
+            ++kept;
+        }
+        return kept;
+    }
+
+    // Same tail as CCTextureAtlas::drawNumberOfQuads for the non-VAO Windows path, except the
+    // element buffer is unbound and the filtered list is supplied from client memory. The
+    // vertex upload is byte-for-byte the range the original would upload, so a later,
+    // unfiltered draw of this atlas sees identical VBO contents.
+    void drawFilteredAtlas(
+        CCTextureAtlas* atlas, unsigned int total, unsigned int kept, GLushort const* indices
+    ) {
+        if (!atlas || kept == 0) return;
+        CCTexture2D* texture = atlas->getTexture();
+        if (!texture) return;
+
+        ccGLBindTexture2D(texture->getName());
+
+        glBindBuffer(GL_ARRAY_BUFFER, atlas->m_pBuffersVBO[0]);
+        if (atlas->m_bDirty) {
+            glBufferSubData(
+                GL_ARRAY_BUFFER, 0,
+                static_cast<GLsizeiptr>(sizeof(ccV3F_C4B_T2F_Quad) * total),
+                atlas->getQuads()
+            );
+            atlas->m_bDirty = false;
         }
 
-        double const centerLocalX = (minX + maxX) * 0.5;
-        double const centerLocalY = (minY + maxY) * 0.5;
-        double const width = maxX - minX;
-        double const height = maxY - minY;
-        double const radiusLocal = std::sqrt(width * width + height * height) * 0.5;
-        if (!std::isfinite(radiusLocal)) return false;
+        ccGLEnableVertexAttribs(kCCVertexAttribFlag_PosColorTex);
+        GLsizei const stride = static_cast<GLsizei>(sizeof(ccV3F_C4B_T2F));
+        glVertexAttribPointer(
+            kCCVertexAttrib_Position, 3, GL_FLOAT, GL_FALSE, stride,
+            reinterpret_cast<GLvoid const*>(offsetof(ccV3F_C4B_T2F, vertices))
+        );
+        glVertexAttribPointer(
+            kCCVertexAttrib_Color, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride,
+            reinterpret_cast<GLvoid const*>(offsetof(ccV3F_C4B_T2F, colors))
+        );
+        glVertexAttribPointer(
+            kCCVertexAttrib_TexCoords, 2, GL_FLOAT, GL_FALSE, stride,
+            reinterpret_cast<GLvoid const*>(offsetof(ccV3F_C4B_T2F, texCoords))
+        );
 
-        Basis basis;
-        if (!basisOf(batch, basis)) return false;
-        double const radius = radiusLocal * basisScale(basis);
-        CCPoint const center = toWorld(basis, ccp(
-            static_cast<float>(centerLocalX), static_cast<float>(centerLocalY)
-        ));
+        // With no element buffer bound, the pointer addresses client memory. That is legal in
+        // the compatibility context cocos2d 2.2 creates on Windows.
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+        glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(kept * 6), GL_UNSIGNED_SHORT, indices);
 
-        return !circleTouches(center.x, center.y, radius, margin);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+        CC_INCREMENT_GL_DRAWS(1);
     }
 
     // ---------------------------------------------------------------------------------------
@@ -495,6 +632,31 @@ namespace {
     unsigned g_traceCurrentBatchBinds = 0;
     bool g_traceInBatch = false;
     std::chrono::steady_clock::time_point g_traceLastFlush = std::chrono::steady_clock::now();
+
+    // CPU timings for the GD-side paths that a 2.2 shader level exercises. Wall-clock
+    // steady_clock around each call; flushed with the same 5 s window as the bind counts.
+    struct TraceTiming {
+        std::uint64_t totalNs = 0;
+        std::uint64_t maxNs = 0;
+        std::uint64_t calls = 0;
+    };
+
+    TraceTiming g_traceVisibility;
+    TraceTiming g_traceEditorVisibility;
+    TraceTiming g_traceShaderLayer;
+    TraceTiming g_traceShaderVisit;
+    std::uint64_t g_traceBatchScanNs = 0;
+    std::uint64_t g_traceBatchScanQuads = 0;
+    std::uint64_t g_traceBatchScans = 0;
+
+    void traceNoteTime(TraceTiming& timing, std::chrono::steady_clock::duration elapsed) {
+        auto const ns = static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(elapsed).count()
+        );
+        timing.totalNs += ns;
+        if (ns > timing.maxNs) timing.maxNs = ns;
+        ++timing.calls;
+    }
 
     void traceProgramBind(GLuint program, bool redundant) {
         ++g_traceBinds;
@@ -577,12 +739,34 @@ namespace {
         out.binds = g_traceBinds;
         out.redundant = g_traceRedundant;
 
+        auto const avgMs = [](TraceTiming const& timing) {
+            return timing.calls > 0
+                ? static_cast<double>(timing.totalNs) / static_cast<double>(timing.calls) / 1e6
+                : 0.0;
+        };
+        auto const maxMs = [](TraceTiming const& timing) {
+            return static_cast<double>(timing.maxNs) / 1e6;
+        };
+
         log::info(
             "shader-trace: binds {} (redundant {}), batches {}, binds/batch avg {:.1f} max {}, "
             "untracked {}, top programs [{}]",
             g_traceBinds, g_traceRedundant, g_traceBatches,
             g_traceBatches > 0 ? static_cast<double>(g_traceBatchBinds) / g_traceBatches : 0.0,
             g_traceMaxBatchBinds, g_traceUntracked, traceTopPrograms()
+        );
+        log::info(
+            "gd-trace: visibility {:.3f}/{:.3f} ms avg/max ({}), editor {:.3f}/{:.3f} ({}), "
+            "shader-layer {:.3f}/{:.3f} ({}), shader-visit {:.3f}/{:.3f} ({}), "
+            "batch scan {:.1f} us avg, {} quads in {} scans",
+            avgMs(g_traceVisibility), maxMs(g_traceVisibility), g_traceVisibility.calls,
+            avgMs(g_traceEditorVisibility), maxMs(g_traceEditorVisibility), g_traceEditorVisibility.calls,
+            avgMs(g_traceShaderLayer), maxMs(g_traceShaderLayer), g_traceShaderLayer.calls,
+            avgMs(g_traceShaderVisit), maxMs(g_traceShaderVisit), g_traceShaderVisit.calls,
+            g_traceBatchScans > 0
+                ? static_cast<double>(g_traceBatchScanNs) / static_cast<double>(g_traceBatchScans) / 1e3
+                : 0.0,
+            g_traceBatchScanQuads, g_traceBatchScans
         );
 
         for (auto& entry : g_trace) entry = TraceEntry{};
@@ -592,6 +776,13 @@ namespace {
         g_traceBatchBinds = 0;
         g_traceMaxBatchBinds = 0;
         g_traceUntracked = 0;
+        g_traceVisibility = TraceTiming{};
+        g_traceEditorVisibility = TraceTiming{};
+        g_traceShaderLayer = TraceTiming{};
+        g_traceShaderVisit = TraceTiming{};
+        g_traceBatchScanNs = 0;
+        g_traceBatchScanQuads = 0;
+        g_traceBatchScans = 0;
         return out;
     }
 
@@ -618,8 +809,10 @@ namespace {
         std::uint64_t batchDraws = 0;
         std::uint64_t batchQuads = 0;
         std::uint64_t emptyBatches = 0;
-        std::uint64_t batchCulled = 0;
-        std::uint64_t programBindsSkipped = 0;
+        std::uint64_t batchCulled = 0;       // batches with at least one quad removed
+        std::uint64_t batchFullyCulled = 0;  // batches with no visible quads
+        std::uint64_t batchScans = 0;        // batches scanned
+        std::uint64_t batchQuadsCulled = 0;  // individual quads removed
         std::uint64_t particleSimsSuppressed = 0;
         std::uint64_t shaderTraceBinds = 0;
         std::uint64_t shaderTraceRedundant = 0;
@@ -748,11 +941,13 @@ namespace reborn {
         add(c.batchQuads, g_hot.batchQuads);
         add(c.emptyBatchDrawsSkipped, g_hot.emptyBatches);
         add(c.batchCulls, g_hot.batchCulled);
+        add(c.batchFullyCulled, g_hot.batchFullyCulled);
+        add(c.batchScans, g_hot.batchScans);
+        add(c.batchQuadsCulled, g_hot.batchQuadsCulled);
         auto const flush = traceMaybeFlush(std::chrono::steady_clock::now());
         g_hot.shaderTraceBinds += flush.binds;
         g_hot.shaderTraceRedundant += flush.redundant;
 
-        add(c.programBindsSkipped, g_hot.programBindsSkipped);
         add(c.particleSimsSuppressed, g_hot.particleSimsSuppressed);
         add(c.shaderTraceBinds, g_hot.shaderTraceBinds);
         add(c.shaderTraceRedundant, g_hot.shaderTraceRedundant);
@@ -834,36 +1029,109 @@ struct SpriteDrawFastPath : Modify<SpriteDrawFastPath, CCSprite> {
     }
 };
 
-// Telemetry for the path GD actually uses for level objects, plus the batch cull: the one
-// skip in this file that can remove a whole level-object GL submission. Off by default
-// (the `batch-culling` setting); when on, only a batch whose atlas buffer is in sync and
-// whose entire vertex box lies outside the expanded view is skipped. Only draw() is
-// skipped; visit(), updates, triggers and adding/removing objects are untouched.
+// Per-quad filtering inside CCSpriteBatchNode::draw, the path GD uses for level objects.
+// The batch keeps its single GL submission, its blend state and its atlas order; only quads
+// that cannot produce a pixel are left out of the index list. The child updateTransform pass
+// and the atlas dirty upload still run exactly where they did. Any unexpected state falls
+// back to the original draw. See section 4 at the top of this file.
 struct BatchNodeTelemetry : Modify<BatchNodeTelemetry, CCSpriteBatchNode> {
     void draw() {
         if (g_flags.any) {
             ++g_hot.batchDraws;
-            if (m_pobTextureAtlas) {
-                unsigned int const quads = m_pobTextureAtlas->getTotalQuads();
-                g_hot.batchQuads += quads;
-                // Empty batches are common while effects expire. The original draw would bind
-                // the program and texture and then submit zero quads; skipping that changes
-                // no pixels and no state anyone reads afterwards (draw(), not visit()).
-                if (quads == 0) {
+            CCTextureAtlas* atlas = m_pobTextureAtlas;
+            if (!atlas) {
+                CCSpriteBatchNode::draw();
+                return;
+            }
+
+            unsigned int total = atlas->getTotalQuads();
+            g_hot.batchQuads += total;
+            // Empty batches are common while effects expire. The original draw would bind
+            // the program and texture and then submit zero quads; skipping that changes
+            // no pixels and no state anyone reads afterwards (draw(), not visit()).
+            if (total == 0) {
+                ++g_hot.emptyBatches;
+                return;
+            }
+
+            if (g_flags.batchCull && batchFilterEligible(this, atlas, total)) {
+                // The original draw runs this pass immediately before it submits. It has to
+                // run before the scan so the vertex data describes this frame; the pass is
+                // dirty-flag guarded, so the original would not repeat real work.
+                CCArray* children = getChildren();
+                if (children && children->count() > 0) {
+                    for (CCSprite* child : getChildrenExt<CCSprite>()) {
+                        if (child) child->updateTransform();
+                    }
+                }
+
+                total = atlas->getTotalQuads();
+                if (total == 0) {
                     ++g_hot.emptyBatches;
                     return;
                 }
-                // The level-object path. The cull fails open: a dirty atlas buffer, a
-                // pending child sort, a bad vertex or an exhausted scan budget all draw.
-                if (g_flags.batchCull && batchOffScreen(this, kBatchMargin)) {
-                    ++g_hot.batchCulled;
+                // The pass can grow the atlas. Re-check every bound before indexing, and
+                // draw whole if the grown batch does not fit the remaining scan budget.
+                if (total > kMaxFilterQuads || total > atlas->getCapacity()
+                    || total > g_batchScanBudget) {
+                    drawWholeBatch();
                     return;
                 }
+
+                g_batchScanBudget -= total;
+                ++g_hot.batchScans;
+                unsigned int kept = 0;
+                if (reborn::config().shaderTrace) {
+                    auto const scanStart = std::chrono::steady_clock::now();
+                    kept = filterBatchQuads(atlas, total, g_filterIndices);
+                    auto const scanTime = std::chrono::steady_clock::now() - scanStart;
+                    g_traceBatchScanNs += static_cast<std::uint64_t>(
+                        std::chrono::duration_cast<std::chrono::nanoseconds>(scanTime).count()
+                    );
+                    g_traceBatchScanQuads += total;
+                    ++g_traceBatchScans;
+                }
+                else {
+                    kept = filterBatchQuads(atlas, total, g_filterIndices);
+                }
+
+                if (kept >= total) {
+                    drawWholeBatch();
+                    return;
+                }
+
+                ++g_hot.batchCulled;
+                g_hot.batchQuadsCulled += total - kept;
+                if (kept == 0) {
+                    ++g_hot.batchFullyCulled;
+                    // No GL work at all. The atlas dirty flag stays set, so the next draw
+                    // that needs the buffer uploads the full vertex range normally.
+                    return;
+                }
+
+                bool const traceDraw = reborn::config().shaderTrace;
+                if (traceDraw) traceNoteBatchStart();
+                CC_NODE_DRAW_SETUP();
+                ccGLBlendFunc(m_blendFunc.src, m_blendFunc.dst);
+                drawFilteredAtlas(atlas, total, kept, g_filterIndices);
+                if (traceDraw) traceNoteBatchEnd();
+                return;
             }
         }
+
         bool const trace = reborn::config().shaderTrace;
         if (trace) traceNoteBatchStart();
         CCSpriteBatchNode::draw();
+        if (trace) traceNoteBatchEnd();
+    }
+
+private:
+    void drawWholeBatch() {
+        bool const trace = reborn::config().shaderTrace;
+        if (trace) traceNoteBatchStart();
+        CC_NODE_DRAW_SETUP();
+        ccGLBlendFunc(m_blendFunc.src, m_blendFunc.dst);
+        m_pobTextureAtlas->drawQuads();
         if (trace) traceNoteBatchEnd();
     }
 };
@@ -917,35 +1185,22 @@ struct ParticleDrawFastPath : Modify<ParticleDrawFastPath, CCParticleSystemQuad>
     }
 };
 
-// Redundant-bind elimination for cocos2d's single GL entry point for programs. The check asks
-// the driver what is bound on every call instead of trusting a cached assumption, so a bind
-// that happens anywhere outside this hook is picked up by the very next use() - there is no
-// cache to go stale. Skipping is only valid when the GL state already matches the program
-// being used; the counter reports how often that holds. Windows-only for the same reason as
-// low-latency: this is the one caller here that issues glGetIntegerv. Off by default.
-struct ShaderStateCache : Modify<ShaderStateCache, CCGLProgram> {
+// Diagnostic-only program-bind accounting. When shader-trace is off this is a pass-through.
+// The old shader-state-cache skip is gone: cocos2d already routes binds through
+// ccGLUseProgram's own state cache (CC_ENABLE_GL_STATE_CACHE), so a second cache here was
+// redundant, and its per-bind glGetIntegerv was itself a driver call.
+struct ShaderBindTrace : Modify<ShaderBindTrace, CCGLProgram> {
     void use() {
 #ifdef GEODE_IS_WINDOWS
-        auto const& cfg = reborn::config();
-        bool const trace = cfg.shaderTrace;
-        bool const wantsSkip = cfg.enabled && cfg.shaderStateCache;
-        if (trace || wantsSkip) {
+        if (reborn::config().shaderTrace) {
             GLint bound = 0;
             glGetIntegerv(GL_CURRENT_PROGRAM, &bound);
             bool const redundant = bound > 0 && static_cast<GLuint>(bound) == this->getProgram();
-            if (trace) {
-                traceProgramBind(this->getProgram(), redundant);
-                traceNoteWindowBind(redundant);
-            }
-            if (wantsSkip && redundant) {
-                ++g_hot.programBindsSkipped;
-                return;
-            }
+            traceProgramBind(this->getProgram(), redundant);
+            traceNoteWindowBind(redundant);
         }
-        CCGLProgram::use();
-#else
-        CCGLProgram::use();
 #endif
+        CCGLProgram::use();
     }
 };
 
@@ -966,5 +1221,56 @@ struct ParticleSystemSuppress : Modify<ParticleSystemSuppress, CCParticleSystem>
             }
         }
         CCParticleSystem::update(dt);
+    }
+};
+
+// shader-trace CPU timings for the GD-side 2.2 paths. Each hook is one branch and a direct
+// pass-through when the setting is off. When on, it records the wall time of the named
+// function. These are CPU times, not GPU times, and no behavior depends on them.
+struct TracePlayLayerVisibility : Modify<TracePlayLayerVisibility, PlayLayer> {
+    void updateVisibility(float dt) {
+        if (!reborn::config().shaderTrace) {
+            PlayLayer::updateVisibility(dt);
+            return;
+        }
+        auto const start = std::chrono::steady_clock::now();
+        PlayLayer::updateVisibility(dt);
+        traceNoteTime(g_traceVisibility, std::chrono::steady_clock::now() - start);
+    }
+};
+
+struct TraceEditorVisibility : Modify<TraceEditorVisibility, LevelEditorLayer> {
+    void updateVisibility(float dt) {
+        if (!reborn::config().shaderTrace) {
+            LevelEditorLayer::updateVisibility(dt);
+            return;
+        }
+        auto const start = std::chrono::steady_clock::now();
+        LevelEditorLayer::updateVisibility(dt);
+        traceNoteTime(g_traceEditorVisibility, std::chrono::steady_clock::now() - start);
+    }
+};
+
+struct TraceShaderLayerUpdate : Modify<TraceShaderLayerUpdate, GJBaseGameLayer> {
+    void updateShaderLayer(float dt) {
+        if (!reborn::config().shaderTrace) {
+            GJBaseGameLayer::updateShaderLayer(dt);
+            return;
+        }
+        auto const start = std::chrono::steady_clock::now();
+        GJBaseGameLayer::updateShaderLayer(dt);
+        traceNoteTime(g_traceShaderLayer, std::chrono::steady_clock::now() - start);
+    }
+};
+
+struct TraceShaderLayerVisit : Modify<TraceShaderLayerVisit, ShaderLayer> {
+    void visit() {
+        if (!reborn::config().shaderTrace) {
+            ShaderLayer::visit();
+            return;
+        }
+        auto const start = std::chrono::steady_clock::now();
+        ShaderLayer::visit();
+        traceNoteTime(g_traceShaderVisit, std::chrono::steady_clock::now() - start);
     }
 };

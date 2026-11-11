@@ -119,8 +119,8 @@ Deliverables in the workspace: `MinimumReborn.geode`, `MinimumReborn-Source.zip`
 
 ## 9. Licensing
 
-MIT. Bismuth (GPL-3.0-or-later plus a restriction on generative-AI level generation and
-modification) was read as a design reference only; no code, shader or asset from it is used.
+MIT. GPL-licensed third-party renderers were read as a design reference only; no code, shader
+or asset from them is used.
 Minimum (MIT, same author) supplied behavioral reference for particle handling and the
 render-gate scheduling idea; the code here was written for this project.
 
@@ -187,7 +187,7 @@ collision and physics never see the culling code. Rendering never feeds back int
 
 * **Batching / a replacement renderer.** Z-order, additive glow, clipping and blending make a
   partial batcher a visual-correctness risk, and the SDK exposes no safe replacement path.
-  "Optimized" is documented as a cheaper draw path, not a new renderer. No Bismuth code.
+  "Optimized" is documented as a cheaper draw path, not a new renderer. No third-party GPL code.
 * **Glow-specific toggle.** GD glow is part of the batched level path (phase 3), so the
   per-sprite cull and fast-out do not see it. A separate switch would remove visuals without
   removing the batch submission.
@@ -613,10 +613,9 @@ it is recorded here so no future doc repeats it:
   is Windows-only by construction (the `glFinish` call compiles only under `GEODE_IS_WINDOWS`),
   though the `low-latency` setting key is not itself tagged `win` in `mod.json` - a minor mismatch,
   harmless while the package is Windows-only.
-* Licensing is unchanged and accurate: Bismuth (GPL-3.0-or-later plus an added clause banning use to
-  facilitate AI-driven GD level generation/modification) is a **design reference only - no Bismuth
-  code, shaders or assets are used**; the low-latency idea is drawn from Minimum (MIT, same author)
-  and reimplemented, not copied.
+* Licensing is unchanged and accurate: GPL-licensed third-party renderers are a **design reference
+  only - no code, shaders or assets from them are used**; the low-latency idea is drawn from
+  Minimum (MIT, same author) and reimplemented, not copied.
 
 ## 37. Build provenance, v1.4.0 to v1.6.0
 

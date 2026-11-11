@@ -98,7 +98,7 @@ namespace {
                     "%s%u FPS%s | avg %.1f ms | p95 %.1f ms | 1%% low %s\n"
                     "logic %u/s | draw %.2f ms (worst %.2f ms) | gpu %s | %s | renderer %s\n"
                     "scene %u/%u/s | sprite fast-out %u/s | particles %u/%u/s | editor %u/s | capped %u/s | batch culls %llu\n"
-                    "sims suppressed %llu | program binds skipped %llu | trace binds %llu",
+                    "quads culled %llu | batch scans %llu | fully culled %llu | sims supp %llu | trace binds %llu",
                     cfg.enabled ? "" : "(OFF) ", fps,
                     counters.throttled.load(std::memory_order_relaxed) ? " (background)" : "",
                     avgMs, p95Ms, lowText,
@@ -115,9 +115,13 @@ namespace {
                     static_cast<unsigned long long>(
                         counters.batchCulls.load(std::memory_order_relaxed)),
                     static_cast<unsigned long long>(
-                        counters.particleSimsSuppressed.load(std::memory_order_relaxed)),
+                        counters.batchQuadsCulled.load(std::memory_order_relaxed)),
                     static_cast<unsigned long long>(
-                        counters.programBindsSkipped.load(std::memory_order_relaxed)),
+                        counters.batchScans.load(std::memory_order_relaxed)),
+                    static_cast<unsigned long long>(
+                        counters.batchFullyCulled.load(std::memory_order_relaxed)),
+                    static_cast<unsigned long long>(
+                        counters.particleSimsSuppressed.load(std::memory_order_relaxed)),
                     static_cast<unsigned long long>(
                         counters.shaderTraceBinds.load(std::memory_order_relaxed))
                 );
