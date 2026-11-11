@@ -23,11 +23,13 @@ jobs:
       # project's CMakeLists.txt, builds it and exposes the generated .geode through
       # steps.build.outputs.build-output. Pinned to a commit so an upstream change cannot
       # break the workflow without a deliberate update.
+      # Pinned to the SDK the mod.json targets ("geode": "5.11.2"). "latest" now resolves to
+      # 6.0.0-alpha.1, which refuses to configure a mod made for 5.11.2.
       - name: Build the mod
         id: build
         uses: geode-sdk/build-geode-mod@a0f7676e6fcd1a584f6d0c1c800239008412defc # v1
         with:
-          sdk: latest
+          sdk: 5.11.2
           target: Win64
           build-config: Release
           combine: false
