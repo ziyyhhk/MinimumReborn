@@ -380,7 +380,7 @@ namespace {
 
             // Escape closes. The game's panels have no global focus chain, so focus rings
             // are omitted rather than faked; Tab order is not implemented for the same reason.
-            if (auto* dispatcher = CCKeyboardDispatcher::sharedDispatcher()) {
+            if (auto* dispatcher = CCKeyboardDispatcher::get()) {
                 dispatcher->addDelegate(this);
             }
 
@@ -1084,7 +1084,7 @@ namespace {
 
         void onExit() override {
             if (g_openPanel == this) g_openPanel = nullptr;
-            if (auto* dispatcher = CCKeyboardDispatcher::sharedDispatcher()) {
+            if (auto* dispatcher = CCKeyboardDispatcher::get()) {
                 dispatcher->removeDelegate(this);
             }
             Popup::onExit();
