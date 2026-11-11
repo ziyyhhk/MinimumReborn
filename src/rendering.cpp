@@ -1,4 +1,9 @@
 #include <Geode/Geode.hpp>
+#ifdef GEODE_IS_WINDOWS
+#include <gl/GL.h>
+#endif
+#include <Geode/modify/CCGLProgram.hpp>
+#include <Geode/modify/CCParticleSystem.hpp>
 #include <Geode/modify/CCParticleSystemQuad.hpp>
 #include <Geode/modify/CCSprite.hpp>
 #include <Geode/modify/CCSpriteBatchNode.hpp>
@@ -338,7 +343,7 @@ namespace {
     // worst case. The local AABB is expanded by each particle's own size; the center is
     // mapped to the world as a circle (rotation-safe for any emitter rotation) and scaled
     // by the emitter's and its parents' scales. Any doubt answers "draw".
-    bool particleOffScreen(CCParticleSystemQuad* system, double margin) {
+    bool particleOffScreen(CCParticleSystem* system, double margin) {
         tCCPositionType const type = system->getPositionType();
         if (type != kCCPositionTypeRelative && type != kCCPositionTypeGrouped) return false;
 
@@ -485,6 +490,8 @@ namespace {
         std::uint64_t batchQuads = 0;
         std::uint64_t emptyBatches = 0;
         std::uint64_t batchCulled = 0;
+        std::uint64_t programBindsSkipped = 0;
+        std::uint64_t particleSimsSuppressed = 0;
     };
 
     HotCounts g_hot;
@@ -610,6 +617,8 @@ namespace reborn {
         add(c.batchQuads, g_hot.batchQuads);
         add(c.emptyBatchDrawsSkipped, g_hot.emptyBatches);
         add(c.batchCulls, g_hot.batchCulled);
+        add(c.programBindsSkipped, g_hot.programBindsSkipped);
+        add(c.particleSimsSuppressed, g_hot.particleSimsSuppressed);
     }
 
     unsigned int effectiveParticleCap();  // defined in config.cpp (adaptive step included)
@@ -765,5 +774,50 @@ struct ParticleDrawFastPath : Modify<ParticleDrawFastPath, CCParticleSystemQuad>
             }
         }
         CCParticleSystemQuad::draw();
+    }
+};
+
+// Redundant-bind elimination for cocos2d's single GL entry point for programs. The check asks
+// the driver what is bound on every call instead of trusting a cached assumption, so a bind
+// that happens anywhere outside this hook is picked up by the very next use() - there is no
+// cache to go stale. Skipping is only valid when the GL state already matches the program
+// being used; the counter reports how often that holds. Windows-only for the same reason as
+// low-latency: this is the one caller here that issues glGetIntegerv. Off by default.
+struct ShaderStateCache : Modify<ShaderStateCache, CCGLProgram> {
+    void use() {
+#ifdef GEODE_IS_WINDOWS
+        auto const& cfg = reborn::config();
+        if (cfg.enabled && cfg.shaderStateCache) {
+            GLint bound = 0;
+            glGetIntegerv(GL_CURRENT_PROGRAM, &bound);
+            if (bound > 0 && static_cast<GLuint>(bound) == this->getProgram()) {
+                ++g_hot.programBindsSkipped;
+                return;
+            }
+        }
+        CCGLProgram::use();
+#else
+        CCGLProgram::use();
+#endif
+    }
+};
+
+// Full suppression for off-screen particle systems: no simulation, no draws, zero work.
+// Particle state freezes off screen; on re-entering the view the normal dt resumes, so there
+// is no emission backlog burst and nothing is deleted mid-frame. Uses the same live-particle
+// AABB test as the off-screen draw cull; Relative/Grouped only, Free systems simulate
+// unchanged. Off by default.
+struct ParticleSystemSuppress : Modify<ParticleSystemSuppress, CCParticleSystem> {
+    void update(float dt) {
+        auto const& cfg = reborn::config();
+        if (cfg.enabled && cfg.particleSuppression) {
+            tCCPositionType const type = this->getPositionType();
+            if (type != kCCPositionTypeFree
+                && particleOffScreen(this, cfg.particleCullMargin)) {
+                ++g_hot.particleSimsSuppressed;
+                return;
+            }
+        }
+        CCParticleSystem::update(dt);
     }
 };

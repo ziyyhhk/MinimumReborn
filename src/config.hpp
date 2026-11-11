@@ -46,6 +46,12 @@ namespace reborn {
         // its entire vertex box is outside the view and its buffer is already in sync.
         // Draw-only. Opt-in; the engine-level write-up is in rendering.cpp section 4.
         bool batchCulling = false;
+        // Redundant GL program bind elimination. Skips CCGLProgram::use's glUseProgram call
+        // when the driver already has this program bound (validated per call, no cache).
+        bool shaderStateCache = false;
+        // Full suppression of off-screen particle simulation: update() is skipped for
+        // systems whose live particles are fully outside the expanded view. Opt-in.
+        bool particleSuppression = false;
         double particleCullMargin = 96.0;   // world units kept around the viewport
         double sceneCullMargin = 128.0;
         bool capParticles = true;
@@ -121,6 +127,10 @@ namespace reborn {
         std::atomic<std::uint64_t> batchQuads{0};
         std::atomic<std::uint64_t> emptyBatchDrawsSkipped{0};
         std::atomic<std::uint64_t> batchCulls{0};
+        // Redundant-bind elimination (shader-state-cache) and particle suppression
+        // (particle-suppression). Both opt-in and both report through these.
+        std::atomic<std::uint64_t> programBindsSkipped{0};
+        std::atomic<std::uint64_t> particleSimsSuppressed{0};
 
         // Editor-only culling. Kept apart from the gameplay counters so a claim about editor
         // behavior can be checked on its own.
