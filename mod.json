@@ -5,9 +5,9 @@
 	},
 	"id": "ziyyhhk.minimum-reborn",
 	"name": "Minimum Reborn",
-	"version": "v2.2.0",
+	"version": "v2.3.0",
 	"developer": "ziyyhhk",
-	"description": "A rendering-focused rebuild of Minimum with a native in-game control panel. Engine or Optimized renderer mode, zero-pixel and off-screen draw fast-outs, whole-batch culling of level object layers (opt-in), live-particle culling (and optional off-screen simulation suppression), an editor-only culling policy, and a No Additional Input Delay ordering mode that moves all mod bookkeeping behind the game's update. Physics, input handling and the game's FPS cap are never changed. Windows build for Geometry Dash 2.2081.",
+	"description": "A rendering-focused rebuild of Minimum. All settings live on the native Geode settings page; the pause menu button opens it. Zero-pixel and off-screen draw fast-outs, whole-batch culling of level object layers (opt-in), live-particle culling (and optional off-screen simulation suppression), an editor-only culling policy, a GPU frame-time overlay line (GL_TIME_ELAPSED), and a No Additional Input Delay ordering mode that moves all mod bookkeeping behind the game's update. Physics, input handling and the game's FPS cap are never changed. Windows build for Geometry Dash 2.2081.",
 	"tags": [
 		"performance",
 		"utility"
@@ -309,7 +309,7 @@
 		},
 		"benchmark-seconds": {
 			"name": "Benchmark Duration",
-			"description": "Length of the benchmark started from the pause menu. Recording starts on the first unpaused frame after you resume; pause screens are not counted. The result reports average, p50/p95 frame time, 1% low, draw CPU time, culling deltas and batch draws, and is written to the Geode log too.",
+			"description": "Inert since v2.3.0. The custom panel (with the benchmark it started) was removed; this setting is kept only so existing settings files stay valid.",
 			"type": "int",
 			"min": 3,
 			"max": 60,

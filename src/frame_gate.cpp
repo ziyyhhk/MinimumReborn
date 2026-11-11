@@ -10,7 +10,6 @@
 #include <algorithm>
 #include <chrono>
 #include "config.hpp"
-#include "benchmark.hpp"
 #include "frame_stats.hpp"
 #include "gpu_timer.hpp"
 #include "hud.hpp"
@@ -317,14 +316,8 @@ struct RebornFrameGate : Modify<RebornFrameGate, CCDirector> {
         if (measurable) {
             double const frameMs = std::chrono::duration<double, std::milli>(drawStart - s.lastDrawn).count();
             double const workMs = std::chrono::duration<double, std::milli>(drawEnd - drawStart).count();
+            // Feeds the overlay's rolling averages. No benchmark records remain in this build.
             reborn::frameStats().push(std::min(frameMs, 1000.0), workMs);
-            // Feeds the in-game benchmark with the same number the overlay uses. No-op
-            // unless a run is active. Paused frames are excluded: the pause layer still
-            // draws at full rate, and counting it would turn "start the benchmark, resume
-            // the level" into a measurement of a static pause screen.
-            if (!this->isPaused()) {
-                reborn::benchmarkNoteFrame(drawEnd, frameMs, workMs);
-            }
         }
         s.lastDrawn = drawStart;
 

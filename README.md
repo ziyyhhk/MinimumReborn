@@ -4,17 +4,12 @@ A rendering-focused optimization mod for Geometry Dash 2.2081, built with C++20 
 Geode SDK. It is a successor to [Minimum](https://github.com/ziyyhhk/Minimum), with the
 render path as the main subject rather than a settings collection.
 
-**Status: v2.1.0.** The measured runtime evidence in this
+**Status: v2.3.0.** The measured runtime evidence in this
 README and in `DEVELOPMENT_REPORT.md` - the Engine vs Optimized A/B table and the skip counts -
-comes from earlier in-game runs on a Windows laptop, not from estimates. What has *not* been run
-in-game here is v1.5.x, v1.6.x, v2.0.0 and now v2.1.0: those were built by CI and installed, but not launched
-or played (the owner tests them), so no FPS or latency number is claimed for the newest features
-(v2.0.0's whole-batch cull and the rebuilt particle cull, and v2.1.0's GL program-bind dedup
-and off-screen particle suppression, are argued from the cocos2d-x 2.2 headers and ship
-fail-open with counters; see sections 13, 14 and 15). The measurements did change
-the design: GD batches its level objects, so the per-sprite scene cull cannot see them. Scene
-culling is opt-in and off in the default profile, and this file says so. See section 9 for the
-measured Engine vs Optimized A/B and for what the draw path actually avoids.
+comes from earlier in-game runs on a Windows laptop, not from estimates. The custom panel was
+**removed in v2.3.0**: every setting is edited on the native Geode settings page, which the
+pause menu's MR button opens directly. v2.3.0 was built by CI and installed; FPS impact of its
+new GPU frame-time line is **not measured**.
 
 ## What it does
 
@@ -103,7 +98,11 @@ updated four times a second, only when the text changed. No per-frame nodes. No 
 blocking GPU query would itself cost frames, so GPU timing is not claimed. The default corner
 is Top Right because GD's attempt counter occupies the top left.
 
-### 7. In-game benchmark
+### 7. In-game benchmark (removed in v2.3.0)
+
+> **Removed:** the benchmark button lived on the custom panel, which was deleted in v2.3.0.
+> `benchmark-seconds` is inert and kept only so existing settings files stay valid. Frame-time
+> stats shown on the overlay come from `frameStats()` directly.
 
 The pause panel's Bench button records **unpaused drawn frames** for the configured duration
 (default 10 s) and reports average FPS, average/p50/p95 frame time, 1% low, variability, draw
@@ -190,9 +189,8 @@ is the default. A profile also selects the renderer mode and both cull modes:
 | Extreme | Optimized | Aggressive | Aggressive | On | 32 | 10 |
 
 The full list is in `mod.json` and appears in Geode's native settings page, which also
-provides reset. The pause menu has a compact panel with the same features, live numbers,
-Render/Scene/Particles mode buttons that cycle in place, Reset, Benchmark, and a shortcut to
-the native page.
+provides reset. The pause menu's MR button closes the pause and opens that page directly.
+The custom panel and its Benchmark button were removed in v2.3.0.
 
 Settings are cached in a snapshot refreshed twice a second and immediately after a UI change.
 Hot paths never look up setting keys.
