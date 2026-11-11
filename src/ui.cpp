@@ -121,12 +121,12 @@ namespace {
                 std::snprintf(
                     text, sizeof(text),
                     "%s%u FPS%s | avg %.1f ms | p95 %.1f ms | 1%% low %s\n"
-                    "logic %u/s | draw %.2f ms | %s | renderer %s\n"
+                    "logic %u/s | draw %.2f ms (worst %.2f ms) | %s | renderer %s\n"
                     "scene %u/%u/s | sprite fast-out %u/s | particles %u/%u/s | editor %u/s | capped %u/s | batch culls %llu\n"
                     "sims suppressed %llu | program binds skipped %llu",
                     cfg.enabled ? "" : "(OFF) ", fps,
                     counters.throttled.load(std::memory_order_relaxed) ? " (background)" : "",
-                    avgMs, p95Ms, lowText, stats.spikeCount(240, 25.0),
+                    avgMs, p95Ms, lowText,
                     logic, workMs, stats.worstWorkMs(240),
                     bottleneckLabel(static_cast<reborn::Bottleneck>(counters.bottleneck.load(std::memory_order_relaxed))),
                     cfg.rendererOptimized ? "optimized" : "engine",
