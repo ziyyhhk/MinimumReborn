@@ -1,5 +1,22 @@
 # Changelog
 
+## v2.2.0 (in testing - not released)
+
+Two workstreams. The rendering work depends on an in-game trace the owner captures; the UI is
+a full rebuilt as part of this version. See the README for the honest status of both.
+
+* **Shader trace (diagnostic, `shader-trace`, bool, default off, Windows).** Per-frame
+  accounting of every `CCGLProgram::use` call: total binds, redundant binds (validated against
+  live `GL_CURRENT_PROGRAM`), program switches per batch, and the top 5 GL program objects by
+  bind count, flushed to the Geode log every 5 s. No behavior change, no allocations, fixed-size
+  state. This exists because v2.1.0's systems were shipped without confirming which GL path the
+  GD 2.2 shader gameplay objects actually take - the measurement comes first, then the fix.
+* **Detailed overlay** gains `trace binds` and the two v2.1.0 counters on one line.
+* **UI rebuilt** against a declared design system (violet/indigo mark, game-native panel
+  language): one accent, semantic colors only, single type family with hard minimums, spacing
+  scale, radius per role, button roles with real states, equal-column tabs that cannot clip.
+  Verification loop pending user screenshots - not marked done here.
+
 ## v2.1.0 (2026-11-11)
 
 Two more opt-in systems, both implemented fail-open and both report through their own counters.

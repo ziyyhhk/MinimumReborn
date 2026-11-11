@@ -52,6 +52,9 @@ namespace reborn {
         // Full suppression of off-screen particle simulation: update() is skipped for
         // systems whose live particles are fully outside the expanded view. Opt-in.
         bool particleSuppression = false;
+        // Diagnostic: per-frame program-bind accounting, flushed to the log every 5 s.
+        // Zero behavior change; counts and logs only.
+        bool shaderTrace = false;
         double particleCullMargin = 96.0;   // world units kept around the viewport
         double sceneCullMargin = 128.0;
         bool capParticles = true;
@@ -131,6 +134,8 @@ namespace reborn {
         // (particle-suppression). Both opt-in and both report through these.
         std::atomic<std::uint64_t> programBindsSkipped{0};
         std::atomic<std::uint64_t> particleSimsSuppressed{0};
+        std::atomic<std::uint64_t> shaderTraceBinds{0};
+        std::atomic<std::uint64_t> shaderTraceRedundant{0};
 
         // Editor-only culling. Kept apart from the gameplay counters so a claim about editor
         // behavior can be checked on its own.

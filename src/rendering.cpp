@@ -8,6 +8,7 @@
 #include <Geode/modify/CCSprite.hpp>
 #include <Geode/modify/CCSpriteBatchNode.hpp>
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include "config.hpp"
@@ -466,6 +467,127 @@ namespace {
         return !circleTouches(center.x, center.y, radius, margin);
     }
 
+    // ---------------------------------------------------------------------------------------
+    // TRACE (diagnostic)
+    //
+    // Everything in this block exists to answer one question: which path do the GD 2.2
+    // shader gameplay objects actually take? It only runs while the `shader-trace`
+    // setting is on; nothing here allocates and every line of state is fixed-size. The
+    // window flushes every 5 s to the Geode log: totals, binds per batch, top 5 GL
+    // program objects by bind count. No behavior depends on this block; it only counts.
+    // ---------------------------------------------------------------------------------------
+    constexpr unsigned kTraceSlots = 48;
+    constexpr auto kTraceWindow = std::chrono::seconds(5);
+
+    struct TraceEntry {
+        GLuint program = 0;
+        std::uint64_t binds = 0;
+        std::uint64_t redundant = 0;
+    };
+
+    TraceEntry g_trace[kTraceSlots];
+    std::uint64_t g_traceBinds = 0;
+    std::uint64_t g_traceRedundant = 0;
+    std::uint64_t g_traceBatches = 0;
+    std::uint64_t g_traceBatchBinds = 0;
+    std::uint64_t g_traceMaxBatchBinds = 0;
+    std::uint64_t g_traceUntracked = 0;
+    unsigned g_traceCurrentBatchBinds = 0;
+    bool g_traceInBatch = false;
+    std::chrono::steady_clock::time_point g_traceLastFlush = std::chrono::steady_clock::now();
+
+    void traceProgramBind(GLuint program, bool redundant) {
+        ++g_traceBinds;
+        if (redundant) ++g_traceRedundant;
+        for (auto& entry : g_trace) {
+            if (entry.program == program) {
+                ++entry.binds;
+                if (redundant) ++entry.redundant;
+                return;
+            }
+        }
+        for (auto& entry : g_trace) {
+            if (entry.program == 0) {
+                entry.program = program;
+                entry.binds = 1;
+                entry.redundant = redundant ? 1 : 0;
+                return;
+            }
+        }
+        // Table full of live programs: keep the ones already tracked, count this one as lost.
+        ++g_traceUntracked;
+    }
+
+    void traceNoteBatchStart() {
+        g_traceInBatch = true;
+        g_traceCurrentBatchBinds = 0;
+    }
+
+    void traceNoteBatchEnd() {
+        if (!g_traceInBatch) return;
+        g_traceInBatch = false;
+        ++g_traceBatches;
+        g_traceBatchBinds += g_traceCurrentBatchBinds;
+        if (g_traceCurrentBatchBinds > g_traceMaxBatchBinds) {
+            g_traceMaxBatchBinds = g_traceCurrentBatchBinds;
+        }
+        g_traceCurrentBatchBinds = 0;
+    }
+
+    void traceNoteWindowBind(bool redundant) {
+        if (!g_traceInBatch) return;
+        if (redundant) return;  // a switch, not a redundant bind, is what matters per batch
+        ++g_traceCurrentBatchBinds;
+    }
+
+    std::string traceTopPrograms() {
+        TraceEntry top[5]{};
+        for (auto const& entry : g_trace) {
+            if (entry.program == 0 || entry.binds == 0) continue;
+            for (int i = 0; i < 5; ++i) {
+                if (entry.binds > top[i].binds) {
+                    for (int j = 4; j > i; --j) top[j] = top[j - 1];
+                    top[i] = entry;
+                    break;
+                }
+            }
+        }
+        std::string out;
+        for (auto const& entry : top) {
+            if (entry.program == 0) break;
+            if (!out.empty()) out += ", ";
+            out += "prog " + std::to_string(entry.program) + " x" + std::to_string(entry.binds);
+        }
+        return out;
+    }
+
+    // Called from renderFrameEnd(); cheap when disabled (one bool + one clock read per frame).
+    void traceMaybeFlush(std::chrono::steady_clock::time_point now) {
+        if (!reborn::config().shaderTrace) return;
+        if (now - g_traceLastFlush < kTraceWindow) return;
+        g_traceLastFlush = now;
+
+        // Publish the window totals through the atomic counters the overlay reads.
+        g_hot.shaderTraceBinds += g_traceBinds;
+        g_hot.shaderTraceRedundant += g_traceRedundant;
+
+        log::info(
+            "shader-trace: binds {} (redundant {}), batches {}, binds/batch avg {:.1f} max {}, "
+            "untracked {}, top programs [{}]",
+            g_traceBinds, g_traceRedundant, g_traceBatches,
+            g_traceBatches > 0 ? static_cast<double>(g_traceBatchBinds) / g_traceBatches : 0.0,
+            g_traceMaxBatchBinds, g_traceUntracked, traceTopPrograms()
+        );
+
+        for (auto& entry : g_trace) entry = TraceEntry{};
+        g_traceBinds = 0;
+        g_traceRedundant = 0;
+        g_traceBatches = 0;
+        g_traceBatchBinds = 0;
+        g_traceMaxBatchBinds = 0;
+        g_traceUntracked = 0;
+    }
+
     // Hot-path counters.
     //
     // The draw hooks run once per sprite and once per particle system, which in a busy level
@@ -492,6 +614,8 @@ namespace {
         std::uint64_t batchCulled = 0;
         std::uint64_t programBindsSkipped = 0;
         std::uint64_t particleSimsSuppressed = 0;
+        std::uint64_t shaderTraceBinds = 0;
+        std::uint64_t shaderTraceRedundant = 0;
     };
 
     HotCounts g_hot;
@@ -619,6 +743,10 @@ namespace reborn {
         add(c.batchCulls, g_hot.batchCulled);
         add(c.programBindsSkipped, g_hot.programBindsSkipped);
         add(c.particleSimsSuppressed, g_hot.particleSimsSuppressed);
+        add(c.shaderTraceBinds, g_hot.shaderTraceBinds);
+        add(c.shaderTraceRedundant, g_hot.shaderTraceRedundant);
+
+        traceMaybeFlush(std::chrono::steady_clock::now());
     }
 
     unsigned int effectiveParticleCap();  // defined in config.cpp (adaptive step included)
@@ -724,7 +852,10 @@ struct BatchNodeTelemetry : Modify<BatchNodeTelemetry, CCSpriteBatchNode> {
                 }
             }
         }
+        bool const trace = reborn::config().shaderTrace;
+        if (trace) traceNoteBatchStart();
         CCSpriteBatchNode::draw();
+        if (trace) traceNoteBatchEnd();
     }
 };
 
@@ -787,10 +918,17 @@ struct ShaderStateCache : Modify<ShaderStateCache, CCGLProgram> {
     void use() {
 #ifdef GEODE_IS_WINDOWS
         auto const& cfg = reborn::config();
-        if (cfg.enabled && cfg.shaderStateCache) {
+        bool const trace = cfg.shaderTrace;
+        bool const wantsSkip = cfg.enabled && cfg.shaderStateCache;
+        if (trace || wantsSkip) {
             GLint bound = 0;
             glGetIntegerv(GL_CURRENT_PROGRAM, &bound);
-            if (bound > 0 && static_cast<GLuint>(bound) == this->getProgram()) {
+            bool const redundant = bound > 0 && static_cast<GLuint>(bound) == this->getProgram();
+            if (trace) {
+                traceProgramBind(this->getProgram(), redundant);
+                traceNoteWindowBind(redundant);
+            }
+            if (wantsSkip && redundant) {
                 ++g_hot.programBindsSkipped;
                 return;
             }
