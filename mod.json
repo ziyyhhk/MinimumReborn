@@ -5,9 +5,9 @@
 	},
 	"id": "ziyyhhk.minimum-reborn",
 	"name": "Minimum Reborn",
-	"version": "v1.6.2",
+	"version": "v2.0.0",
 	"developer": "ziyyhhk",
-	"description": "A rendering-focused rebuild of Minimum with a native in-game control panel. Engine or Optimized renderer mode, zero-pixel and off-screen draw fast-outs, particle pool caps, an editor-only culling policy, and a No Additional Input Delay ordering mode that moves all mod bookkeeping behind the game's update. Physics, input handling and the game's FPS cap are never changed. Windows build for Geometry Dash 2.2081.",
+	"description": "A rendering-focused rebuild of Minimum with a native in-game control panel. Engine or Optimized renderer mode, zero-pixel and off-screen draw fast-outs, whole-batch culling of level object layers (opt-in), particle culling measured from live particle data, an editor-only culling policy, and a No Additional Input Delay ordering mode that moves all mod bookkeeping behind the game's update. Physics, input handling and the game's FPS cap are never changed. Windows build for Geometry Dash 2.2081.",
 	"tags": [
 		"performance",
 		"utility"
@@ -22,7 +22,7 @@
 		},
 		"profile": {
 			"name": "Profile",
-			"description": "Balanced is the default: optimized renderer, particle culling, scene culling off because GD batches level objects, editor culling on. Default keeps the engine renderer and full particle effects. Performance and Extreme lower the particle cap and enable gameplay scene culling. Editing a profile-owned setting switches to Custom. Nothing here changes physics, input handling or the game's FPS cap.",
+			"description": "Balanced is the default: optimized renderer, particle culling, scene culling off because GD batches level objects, editor culling on. Default keeps the engine renderer and full particle effects. Performance turns on the batch cull (the level-object path); Extreme also lowers the particle cap. Editing a profile-owned setting switches to Custom. Nothing here changes physics, input handling or the game's FPS cap.",
 			"type": "string",
 			"default": "Balanced",
 			"one-of": [
@@ -75,7 +75,7 @@
 		},
 		"cull-offscreen-particles": {
 			"name": "Skip Off-Screen Particles",
-			"description": "Does not draw relative-position particle systems whose worst-case reach does not touch the screen. They keep updating, so emission timing and motion are unchanged when they scroll back. Free and grouped systems are always drawn.",
+			"description": "Does not draw particle systems whose live AABB does not touch the screen. The box is measured every frame from the actual particle positions (relative and grouped systems), expanded by particle size; the emitter-on-screen case costs one circle test. Free systems are always drawn. Particles keep updating, so emission timing and motion are unchanged when they scroll back.",
 			"type": "bool",
 			"default": true
 		},
@@ -101,6 +101,12 @@
 				"Conservative",
 				"Aggressive"
 			]
+		},
+		"batch-culling": {
+			"name": "Batch Culling",
+			"description": "Opt-in whole-batch culling for level object layers. A CCSpriteBatchNode whose entire vertex buffer lies outside the viewport plus 64 world units is skipped: one GL draw saved for every off-screen batch. The test only runs while the atlas buffer is in sync with the VBO (a dirty buffer or a pending child sort always draws), the box is measured from the actual quads every frame, and the scan is capped at 24,000 quads per frame. Off by default; Performance and Extreme profiles turn it on. Draw-only; nothing is re-batched, reordered or rewritten.",
+			"type": "bool",
+			"default": false
 		},
 		"cap-particles": {
 			"name": "Cap Particle Pool Size",

@@ -54,21 +54,24 @@ namespace reborn {
             bool rendererOptimized;
             char const* sceneCull;
             char const* particleCull;
+            bool batchCull;
         };
 
         // Only features that exist are listed. No profile claims a feature the build lacks.
         // Default takes the game's draw path unchanged, so the original renderer is what you
         // get; the other profiles turn on the optimized draw path with increasing culling.
         //
-        // Balanced leaves the scene cull off. Runtime telemetry (phase 3) showed that GD draws
-        // level objects through CCSpriteBatchNode, so the per-sprite cull examined ~19k sprites
-        // and skipped none; keeping it on by default would add checks with no measured saving.
-        // It stays available as an opt-in for unbatched content and for the stronger profiles.
+        // Balanced leaves the scene cull and the batch cull off. Runtime telemetry (phase 3)
+        // showed that GD draws level objects through CCSpriteBatchNode, so the per-sprite cull
+        // examined ~19k sprites and skipped none; keeping it on by default would add checks
+        // with no measured saving. The stronger profiles turn the batch cull on: it is the one
+        // test that can see the batched path, it is bounded by a per-frame scan budget, and
+        // the benchmark can report exactly how much it removes.
         constexpr ProfileValues kProfiles[] = {
-            {"Default",     256, 20, false, "Off",          "Off"},
-            {"Balanced",    128, 20, true,  "Off",          "Conservative"},
-            {"Performance",  64, 15, true,  "Conservative", "Conservative"},
-            {"Extreme",      32, 10, true,  "Aggressive",   "Aggressive"},
+            {"Default",     256, 20, false, "Off",          "Off",          false},
+            {"Balanced",    128, 20, true,  "Off",          "Conservative", false},
+            {"Performance",  64, 15, true,  "Conservative", "Conservative", true},
+            {"Extreme",      32, 10, true,  "Aggressive",   "Aggressive",   true},
         };
 
         char const* profileName(Profile profile) {
@@ -141,6 +144,7 @@ namespace reborn {
             mod->setSettingValue<bool>("cull-offscreen-particles", std::strcmp(values->particleCull, "Off") != 0);
             mod->setSettingValue<std::string>("particle-cull-mode", values->particleCull);
             mod->setSettingValue<std::string>("scene-cull", values->sceneCull);
+            mod->setSettingValue<bool>("batch-culling", values->batchCull);
             mod->setSettingValue<bool>("cap-particles", true);
             mod->setSettingValue<int64_t>("particle-cap", static_cast<int64_t>(values->particleCap));
 #ifdef GEODE_IS_WINDOWS
@@ -250,6 +254,7 @@ namespace reborn {
         c.cullOffscreenParticles = mod->getSettingValue<bool>("cull-offscreen-particles");
         c.particleCull = parseCullMode(mod->getSettingValue<std::string>("particle-cull-mode"));
         c.sceneCull = parseCullMode(mod->getSettingValue<std::string>("scene-cull"));
+        c.batchCulling = mod->getSettingValue<bool>("batch-culling");
         c.particleCullMargin = marginFor(c.particleCull, 128.0, 8.0);
         c.sceneCullMargin = marginFor(c.sceneCull, 160.0, 16.0);
         c.capParticles = mod->getSettingValue<bool>("cap-particles");
@@ -316,6 +321,7 @@ namespace reborn {
         mod->setSettingValue<bool>("cull-offscreen-particles", true);
         mod->setSettingValue<std::string>("particle-cull-mode", "Conservative");
         mod->setSettingValue<std::string>("scene-cull", "Off");
+        mod->setSettingValue<bool>("batch-culling", false);
         mod->setSettingValue<bool>("cap-particles", true);
         mod->setSettingValue<int64_t>("particle-cap", static_cast<int64_t>(kDefaultParticleCap));
         mod->setSettingValue<bool>("adaptive-cap", false);

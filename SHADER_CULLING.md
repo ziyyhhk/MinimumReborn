@@ -127,12 +127,48 @@ both hide entire pieces of a level rather than one sprite:
    the cull - and a batch whose children have since scrolled into view can stay culled
    indefinitely, with nothing inside the mod able to notice.
 
-Which case applies depends on GD's exact fork, and settling it needs an in-game test on a level
-with off-screen batches. The options were therefore to ship it off by default and let the first
-player discover an invisible-piece-of-level bug, or remove it. It is removed. What remains for
-batches is the empty-buffer skip, which cannot hide anything.
+Which case applies depends on GD's exact fork. Section 9 settles it from the same headers the
+binary was built against: the VBO is only authoritative when `m_bDirty` is clear, and
+`drawQuads()` submits exactly `getTotalQuads()` quads. What remains common to both eras of
+this mod is the empty-buffer skip, which cannot hide anything.
 
-## 9. The limitation, stated plainly
+## 9. v2.0.0: the batch path, closed properly
+
+Section 8 removed the whole-batch cull because two failure modes could not be ruled out. Both are
+now closed by construction, using the cocos2d-x 2.2 headers this binary was built against
+(`loader/include/Geode/cocos/...` in the SDK this mod compiles against), not by assumption:
+
+1. "The scan covers fewer entries than draw() submits." `CCTextureAtlas::drawQuads()` draws
+   `m_uTotalQuads` quads and nothing else, and `getTotalQuads()` is that same count. Children
+   added via `addSpriteWithoutQuad` never receive an atlas slot at all; they draw through their
+   own `CCSprite::draw` path, which this change does not touch. The scan covers `[0, total)`
+   and all four corners of every quad in the batch node's local space, and the local AABB is
+   converted to a rotation-invariant circle mapped through the batch's world basis, so a rotated
+   batch cannot escape its own bound.
+2. "Skipping the assembly can become self-sustaining." The engine marks
+   `CCTextureAtlas::m_bDirty` whenever the VBO needs an upload. The hook never skips a batch
+   whose atlas `isDirty()` is true, nor one whose `m_bManualSortAllChildrenDirty` is set (a
+   pending sort rebuilds the buffer inside the draw). A skipped frame therefore leaves the next
+   frame byte-identical to the one the game would have produced: same quads, same order.
+
+Two further bounds: a per-frame scan budget of 24,000 quads caps the CPU cost of the feature
+(once spent, batches are drawn untested), and any missing or non-finite data answers "draw".
+The whole-batch cull is opt-in (`batch-culling`, off by default; on in Performance/Extreme) and
+is counted in its own `batchCulls` counter. Like every draw skip in this mod the effect is
+measured, not assumed: the Detailed overlay shows the total, the Culling page and the benchmark
+result line show it too.
+
+The particle cull was rebuilt the same way. It now measures the live particle AABB from
+`m_pParticles` every frame (Relative and Grouped systems - both live in emitter-local space),
+which is rotation-invariant and exactly tight to this frame's own data. The old worst-case reach
+cone could only reject a system when every possible future position was off screen, which is
+rarely true. Free systems remain drawn: their absolute frame has no transform safe to assume.
+
+## 10. The limitation, stated plainly
+
+Note: section 9 (v2.0.0) adds an opt-in, fail-open whole-batch skip on top of what is said
+there. The batch buffer is still never rewritten, reordered or merged - a batch is either drawn
+in full or not drawn at all, and only when its own buffer is provably in sync.
 
 Geometry Dash renders through cocos2d-x with a per-texture-atlas batch per layer. A mod cannot
 do what Sodium does for Minecraft chunks - rebuild the geometry into visibility-aware sections,

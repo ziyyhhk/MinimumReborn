@@ -36,6 +36,7 @@ namespace reborn {
         std::uint64_t framesLogicOnly = 0;
         std::uint64_t batchDraws = 0;   // CCSpriteBatchNode::draw calls in the window
         std::uint64_t batchQuads = 0;   // quads those batch nodes submitted
+        std::uint64_t batchCulls = 0;   // batches skipped by the whole-batch cull in the window
         char mode[72] = {};
     };
 

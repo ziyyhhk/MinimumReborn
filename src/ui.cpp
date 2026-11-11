@@ -122,7 +122,7 @@ namespace {
                     text, sizeof(text),
                     "%s%u FPS%s | avg %.1f ms | p95 %.1f ms | 1%% low %s\n"
                     "logic %u/s | draw %.2f ms | %s | renderer %s\n"
-                    "scene %u/%u/s | sprite fast-out %u/s | particles %u/%u/s | editor %u/s | capped %u/s",
+                    "scene %u/%u/s | sprite fast-out %u/s | particles %u/%u/s | editor %u/s | capped %u/s | batch culls %llu",
                     cfg.enabled ? "" : "(OFF) ", fps,
                     counters.throttled.load(std::memory_order_relaxed) ? " (background)" : "",
                     avgMs, p95Ms, lowText, stats.spikeCount(240, 25.0),
@@ -135,7 +135,9 @@ namespace {
                     counters.particleSkipsPerSec.load(std::memory_order_relaxed),
                     counters.particleExaminedPerSec.load(std::memory_order_relaxed),
                     counters.editorCulledPerSec.load(std::memory_order_relaxed),
-                    counters.cappedPerSec.load(std::memory_order_relaxed)
+                    counters.cappedPerSec.load(std::memory_order_relaxed),
+                    static_cast<unsigned long long>(
+                        counters.batchCulls.load(std::memory_order_relaxed))
                 );
             }
             else {
@@ -775,7 +777,11 @@ namespace {
 
             // The mode cycles above only take effect while this switch is on, and it had no
             // control anywhere in the panel.
-            this->toggleRow(3, "cull-offscreen-particles", "Off-screen particle culling");
+            float const half = (kContentWidth - kGap) / 2.f;
+            this->toggleRow(3, "cull-offscreen-particles", "Off-screen particles");
+            // Opt-in whole-batch cull for the batched level path; off until the owner
+            // measures it in-game. Performance and Extreme profiles turn it on.
+            this->toggleRow(3, "batch-culling", "Batch culling", kRight - half + 28.f);
             statRow(4, "Sprites / particles", "cull-rate");
             statRow(5, "Batches (session)", "batches");
             noteRow(6, "Draw-only. Simulation, physics, collisions and triggers are untouched.");
@@ -1055,7 +1061,8 @@ namespace {
                               u64(counters.idleParticleDrawsSkipped)
                                   + u64(counters.offscreenParticleDrawsSkipped)
                                   + u64(counters.invisibleParticleDrawsSkipped),
-                              u64(counters.emptyBatchDrawsSkipped));
+                              u64(counters.emptyBatchDrawsSkipped)
+                                  + u64(counters.batchCulls));
             }
             else if (id == "cull-rate") {
                 std::snprintf(text, sizeof(text), "sprites %u/%u   particles %u/%u per s",
@@ -1070,8 +1077,10 @@ namespace {
                               counters.particleExaminedPerSec.load(std::memory_order_relaxed));
             }
             else if (id == "batches") {
-                std::snprintf(text, sizeof(text), "%llu empty skipped / %llu drawn",
-                              u64(counters.emptyBatchDrawsSkipped), u64(counters.batchDraws));
+                std::snprintf(text, sizeof(text), "%llu empty / %llu culled / %llu drawn",
+                              u64(counters.emptyBatchDrawsSkipped),
+                              u64(counters.batchCulls),
+                              u64(counters.batchDraws));
             }
             else if (id == "input") {
                 std::snprintf(text, sizeof(text), "%llu deferred / %llu scheduler / %llu drains",
