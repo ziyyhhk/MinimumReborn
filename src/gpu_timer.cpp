@@ -22,9 +22,10 @@ namespace reborn {
         EndQuery p_endQuery = nullptr;
         GetQueryObjectuiv p_getQueryObjectuiv = nullptr;
 
-        unsigned int const GL_TIME_ELAPSED = 0x88BF;
-        unsigned int const GL_QUERY_RESULT = 0x87CB;
-        unsigned int const GL_QUERY_RESULT_AVAILABLE = 0x8866;
+        // cocos OGLES headers #define these GL constants, so the mod's own are renamed.
+        unsigned int const kTimeElapsedQueryTarget = 0x88BF;
+        unsigned int const kQueryResult = 0x87CB;
+        unsigned int const kQueryResultAvailable = 0x8866;
 
         bool resolveGl() {
             if (p_genQueries) return true;
@@ -63,10 +64,10 @@ namespace reborn {
             // GL_QUERY_RESULT is a blocking read; ask for availability first so the frame
             // path never waits on the GPU.
             unsigned int available = 0;
-            p_getQueryObjectuiv(g_query, GL_QUERY_RESULT_AVAILABLE, &available);
+            p_getQueryObjectuiv(g_query, kQueryResultAvailable, &available);
             if (!available) return;
             unsigned int nanoseconds = 0;
-            p_getQueryObjectuiv(g_query, GL_QUERY_RESULT, &nanoseconds);
+            p_getQueryObjectuiv(g_query, kQueryResult, &nanoseconds);
             g_queryInFlight = false;
             // A driver answer of zero or garbage never reaches the overlay.
             double const ms = static_cast<double>(nanoseconds) / 1e6;
@@ -81,13 +82,13 @@ namespace reborn {
         if (!cfg.enabled || !cfg.gpuFrameTime) return;
         collectResult();
         if (!timerReady()) return;
-        p_beginQuery(GL_TIME_ELAPSED, g_query);
+        p_beginQuery(kTimeElapsedQueryTarget, g_query);
         g_queryInFlight = true;
     }
 
     void gpuTimerEnd() {
         if (!g_queryInFlight) return;
-        p_endQuery(GL_TIME_ELAPSED);
+        p_endQuery(kTimeElapsedQueryTarget);
     }
 
 }
