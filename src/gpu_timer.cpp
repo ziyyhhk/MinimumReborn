@@ -1,29 +1,60 @@
 #include <Geode/Geode.hpp>
 
 #ifdef GEODE_IS_WINDOWS
-// The cocos OGLES header ships the same GLEW layout GD was built with: the entry points are
-// plain calls through GLEW's function pointers, resolved by the driver layer.
-#include <Geode/cocos/platform/third_party/win32/OGLES/GL/glew.h>
-#include <algorithm>
+#include <Windows.h>
 #include "config.hpp"
 #include "gpu_timer.hpp"
 
 namespace reborn {
 
     namespace {
-        // One reusable query. GL_TIME_ELAPSED is core GL 3.3, which GD 2.2081 requires on
-        // Windows; if it is ever unavailable no query exists and every call is a no-op.
-        GLuint g_query = 0;
+        // glew32.dll exports GLEW's function-pointer tables (double-underscore data symbols),
+        // not an import library this toolchain can link, so the entry points come from
+        // GetProcAddress at runtime - the same pattern ModImpl uses for the game's own
+        // symbols. GD initializes GLEW at startup, which fills these in.
+        using GenQueries = void (APIENTRY*)(unsigned int n, unsigned int* ids);
+        using BeginQuery = void (APIENTRY*)(unsigned int target, unsigned int id);
+        using EndQuery = void (APIENTRY*)(unsigned int target);
+        using GetQueryObjectuiv = void (APIENTRY*)(unsigned int id, unsigned int pname, unsigned int* params);
+
+        GenQueries p_genQueries = nullptr;
+        BeginQuery p_beginQuery = nullptr;
+        EndQuery p_endQuery = nullptr;
+        GetQueryObjectuiv p_getQueryObjectuiv = nullptr;
+
+        unsigned int const GL_TIME_ELAPSED = 0x88BF;
+        unsigned int const GL_QUERY_RESULT = 0x87CB;
+        unsigned int const GL_QUERY_RESULT_AVAILABLE = 0x8866;
+
+        bool resolveGl() {
+            if (p_genQueries) return true;
+            HMODULE mod = GetModuleHandleA("glew32.dll");
+            if (!mod) mod = LoadLibraryA("glew32.dll");
+            if (!mod) return false;
+            auto const genVar = reinterpret_cast<GenQueries*>(GetProcAddress(mod, "__glewGenQueries"));
+            auto const beginVar = reinterpret_cast<BeginQuery*>(GetProcAddress(mod, "__glewBeginQuery"));
+            auto const endVar = reinterpret_cast<EndQuery*>(GetProcAddress(mod, "__glewEndQuery"));
+            auto const getObjVar = reinterpret_cast<GetQueryObjectuiv*>(GetProcAddress(mod, "__glewGetQueryObjectuiv"));
+            if (!genVar || !beginVar || !endVar || !getObjVar) return false;
+            // GLEW leaves these null when the context lacks the feature (anything below
+            // GL 1.5). Null here means no GL query support: the timer stays off.
+            if (!*genVar || !*beginVar || !*endVar || !*getObjVar) return false;
+            p_genQueries = *genVar;
+            p_beginQuery = *beginVar;
+            p_endQuery = *endVar;
+            p_getQueryObjectuiv = *getObjVar;
+            return true;
+        }
+
+        unsigned int g_query = 0;
         bool g_initialized = false;
         bool g_queryInFlight = false;
 
         bool timerReady() {
             if (g_initialized) return g_query != 0;
             g_initialized = true;
-            glewInit();
-            if (glewIsSupported("GL_ARB_timer_query") || GLEW_VERSION_3_3) {
-                glGenQueries(1, &g_query);
-            }
+            if (!resolveGl()) return false;
+            p_genQueries(1, &g_query);
             return g_query != 0;
         }
 
@@ -31,11 +62,11 @@ namespace reborn {
             if (!g_queryInFlight) return;
             // GL_QUERY_RESULT is a blocking read; ask for availability first so the frame
             // path never waits on the GPU.
-            GLuint available = 0;
-            glGetQueryObjectuiv(g_query, GL_QUERY_RESULT_AVAILABLE, &available);
+            unsigned int available = 0;
+            p_getQueryObjectuiv(g_query, GL_QUERY_RESULT_AVAILABLE, &available);
             if (!available) return;
-            GLuint nanoseconds = 0;
-            glGetQueryObjectuiv(g_query, GL_QUERY_RESULT, &nanoseconds);
+            unsigned int nanoseconds = 0;
+            p_getQueryObjectuiv(g_query, GL_QUERY_RESULT, &nanoseconds);
             g_queryInFlight = false;
             // A driver answer of zero or garbage never reaches the overlay.
             double const ms = static_cast<double>(nanoseconds) / 1e6;
@@ -50,13 +81,13 @@ namespace reborn {
         if (!cfg.enabled || !cfg.gpuFrameTime) return;
         collectResult();
         if (!timerReady()) return;
-        glBeginQuery(GL_TIME_ELAPSED, g_query);
+        p_beginQuery(GL_TIME_ELAPSED, g_query);
         g_queryInFlight = true;
     }
 
     void gpuTimerEnd() {
         if (!g_queryInFlight) return;
-        glEndQuery(GL_TIME_ELAPSED);
+        p_endQuery(GL_TIME_ELAPSED);
     }
 
 }

@@ -33,7 +33,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE src)
 target_link_libraries(${PROJECT_NAME} geode-sdk)
 
 if (WIN32)
-    # timeBeginPeriod / timeEndPeriod (system_tuning.cpp), glFinish (frame_gate.cpp) and
-    # the GL_TIME_ELAPSED query entry points (gpu_timer.cpp, through GLEW's tables).
-    target_link_libraries(${PROJECT_NAME} winmm opengl32 glew32)
+    # timeBeginPeriod / timeEndPeriod (system_tuning.cpp) and glFinish (frame_gate.cpp).
+    # The GPU timer resolves its GL entry points from glew32.dll at runtime instead.
+    target_link_libraries(${PROJECT_NAME} winmm opengl32)
 endif()
