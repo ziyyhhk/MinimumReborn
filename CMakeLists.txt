@@ -4,14 +4,14 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 
-project(MinimumReborn VERSION 2.1.0)
+project(MinimumReborn VERSION 2.3.0)
 
 add_library(${PROJECT_NAME} SHARED
     src/main.cpp
     src/config.cpp
     src/rendering.cpp
     src/frame_gate.cpp
-    src/benchmark.cpp
+    src/gpu_timer.cpp
     src/system_tuning.cpp
     src/ui.cpp
 )
@@ -33,5 +33,6 @@ target_link_libraries(${PROJECT_NAME} geode-sdk)
 
 if (WIN32)
     # timeBeginPeriod / timeEndPeriod (system_tuning.cpp) and glFinish (frame_gate.cpp).
+    # The GPU timer resolves its GL entry points from glew32.dll at runtime instead.
     target_link_libraries(${PROJECT_NAME} winmm opengl32)
 endif()

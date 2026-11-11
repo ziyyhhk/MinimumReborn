@@ -257,6 +257,8 @@ namespace reborn {
         c.batchCulling = mod->getSettingValue<bool>("batch-culling");
         c.shaderStateCache = mod->getSettingValue<bool>("shader-state-cache");
         c.particleSuppression = mod->getSettingValue<bool>("particle-suppression");
+        c.shaderTrace = mod->getSettingValue<bool>("shader-trace");
+        c.gpuFrameTime = mod->getSettingValue<bool>("gpu-frame-time");
         c.particleCullMargin = marginFor(c.particleCull, 128.0, 8.0);
         c.sceneCullMargin = marginFor(c.sceneCull, 160.0, 16.0);
         c.capParticles = mod->getSettingValue<bool>("cap-particles");
@@ -326,6 +328,9 @@ namespace reborn {
         mod->setSettingValue<bool>("batch-culling", false);
         mod->setSettingValue<bool>("shader-state-cache", false);
         mod->setSettingValue<bool>("particle-suppression", false);
+        mod->setSettingValue<bool>("shader-trace", false);
+        mod->setSettingValue<bool>("gpu-frame-time", true);
+        mod->setSettingValue<bool>("gpu-frame-time", true);
         mod->setSettingValue<bool>("cap-particles", true);
         mod->setSettingValue<int64_t>("particle-cap", static_cast<int64_t>(kDefaultParticleCap));
         mod->setSettingValue<bool>("adaptive-cap", false);

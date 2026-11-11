@@ -1,5 +1,56 @@
 # Changelog
 
+## v2.3.0
+
+The custom panel is deleted. This release is the answer to "the UI is unusable": every
+setting lives on the native Geode settings page, reached from the pause menu's MR button
+(the button opens it directly; no popup of ours exists anymore).
+
+* **Custom control panel removed** (`src/ui.cpp` rebuilt): `RebornPopup`, the tab pages,
+  the segmented profile control, the checkbox component, the footer buttons, the header
+  strip, the ledger rows and `DESIGN.md` are gone. The remaining UI surface is the corner
+  performance overlay (`StatsHud`) and the MR button.
+* **MR button now opens the native settings page** (`openSettingsPopup`), so every setting -
+  profile, culling, batch cull, shader cache, suppression, trace, GPU frame time - is edited
+  on the same page Geode renders, with its own reset.
+* **GPU frame time stays** (`gpu-frame-time`, bool, default on, Windows): `GL_TIME_ELAPSED`
+  around the engine draw, read back one frame late non-blocking; shown as `gpu` on the
+  Detailed overlay. **Not measured in-game yet.**
+* **Benchmark removed** with the panel: `src/benchmark.cpp`, `src/benchmark.hpp` and the
+  per-frame `benchmarkNoteFrame` call are gone. `frameStats()` still feeds the overlay's
+  rolling averages. `benchmark-seconds` is inert and stays so existing settings files load.
+* Versioning: v2.3.0 is the release line; the v2.2.0 candidate never shipped and is
+  superseded by this PR.
+* Not measured: the Jawbreaker lag probe (`shader-trace`) has still not been run by the
+  owner; hook installation is confirmed in the 14:13 log (all 10 hooks, including
+  `CCGLProgram::use` and `CCParticleSystem::update`). FPS / 1% low unchanged claims: none.
+
+## v2.2.0 (2026-11-11)
+
+Two workstreams. The rendering work depends on an in-game trace the owner captures; the UI is
+a full rebuilt as part of this version. See the README for the honest status of both.
+
+* **Shader trace (diagnostic, `shader-trace`, bool, default off, Windows).** Per-frame
+  accounting of every `CCGLProgram::use` call: total binds, redundant binds (validated against
+  live `GL_CURRENT_PROGRAM`), program switches per batch, and the top 5 GL program objects by
+  bind count, flushed to the Geode log every 5 s. No behavior change, no allocations, fixed-size
+  state. This exists because v2.1.0's systems were shipped without confirming which GL path the
+  GD 2.2 shader gameplay objects actually take - the measurement comes first, then the fix.
+* **GPU frame time (`gpu-frame-time`, bool, default on, Windows).** Measures the GPU time of the
+  submitted frame with `GL_TIME_ELAPSED` and shows it as `gpu` on the Detailed overlay. The
+  result is read back one frame late with a non-blocking availability check, so the frame path
+  never waits on the GPU. Measurement only: no GL state is changed beyond the query lifecycle.
+  This is the number that answers whether the Jawbreaker shader lag is GPU-bound.
+* **Detailed overlay** gains `gpu`, `trace binds` and the two v2.1.0 counters.
+* **UI rebuilt** against a declared design system (violet/indigo mark, game-native panel
+  language): one accent, semantic colors only, sentence case, spacing/radius scales, button
+  roles. Panel is 480x284 with 31px rows and 40px buttons; nothing clips; text scales raised
+  ~15-25%. The GD native close button overlapped the header content in the last build - header
+  content now starts after it. Verification loop pending user screenshots - not marked done.
+* **Escape** closes the panel via `geode::KeyboardInputEvent` (no multi-inheritance
+  warnings); the key is consumed before the game's keyboard dispatch, so a native close
+  can never double-fire.
+
 ## v2.1.0 (2026-11-11)
 
 Two more opt-in systems, both implemented fail-open and both report through their own counters.

@@ -5,9 +5,9 @@
 	},
 	"id": "ziyyhhk.minimum-reborn",
 	"name": "Minimum Reborn",
-	"version": "v2.1.0",
+	"version": "v2.3.0",
 	"developer": "ziyyhhk",
-	"description": "A rendering-focused rebuild of Minimum with a native in-game control panel. Engine or Optimized renderer mode, zero-pixel and off-screen draw fast-outs, whole-batch culling of level object layers (opt-in), live-particle culling (and optional off-screen simulation suppression), an editor-only culling policy, and a No Additional Input Delay ordering mode that moves all mod bookkeeping behind the game's update. Physics, input handling and the game's FPS cap are never changed. Windows build for Geometry Dash 2.2081.",
+	"description": "A rendering-focused rebuild of Minimum. All settings live on the native Geode settings page; the pause menu button opens it. Zero-pixel and off-screen draw fast-outs, whole-batch culling of level object layers (opt-in), live-particle culling (and optional off-screen simulation suppression), an editor-only culling policy, a GPU frame-time overlay line (GL_TIME_ELAPSED), and a No Additional Input Delay ordering mode that moves all mod bookkeeping behind the game's update. Physics, input handling and the game's FPS cap are never changed. Windows build for Geometry Dash 2.2081.",
 	"tags": [
 		"performance",
 		"utility"
@@ -106,6 +106,24 @@
 			"name": "Batch Culling",
 			"description": "Opt-in whole-batch culling for level object layers. A CCSpriteBatchNode whose entire vertex buffer lies outside the viewport plus 64 world units is skipped: one GL draw saved for every off-screen batch. The test only runs while the atlas buffer is in sync with the VBO (a dirty buffer or a pending child sort always draws), the box is measured from the actual quads every frame, and the scan is capped at 24,000 quads per frame. Off by default; Performance and Extreme profiles turn it on. Draw-only; nothing is re-batched, reordered or rewritten.",
 			"type": "bool",
+			"default": false
+		},
+		"gpu-frame-time": {
+			"name": "GPU Frame Time (GL_TIME_ELAPSED)",
+			"description": "Measures the GPU time of the submitted frame with a GL timer query and shows it on the Detailed overlay ('gpu'). Measurement only: it never changes GL state, and the result is read back one frame late with a non-blocking availability check (the frame path never waits on the GPU). Windows only.",
+			"type": "bool",
+			"platforms": [
+				"win"
+			],
+			"default": true
+		},
+		"shader-trace": {
+			"name": "Shader Trace (diagnostic)",
+			"description": "Diagnostic counters, never changes behavior. While on, every CCGLProgram::use call is counted (total and redundant, validated against live GL state) and per-batch program binds are tracked; every 5 seconds the Geode log gets one line with the totals and the top 5 GL program objects by bind count. Used to find out which GL path the 2.2 shader triggers take. Off by default; turn it off after collecting the log.",
+			"type": "bool",
+			"platforms": [
+				"win"
+			],
 			"default": false
 		},
 		"shader-state-cache": {
@@ -291,7 +309,7 @@
 		},
 		"benchmark-seconds": {
 			"name": "Benchmark Duration",
-			"description": "Length of the benchmark started from the pause menu. Recording starts on the first unpaused frame after you resume; pause screens are not counted. The result reports average, p50/p95 frame time, 1% low, draw CPU time, culling deltas and batch draws, and is written to the Geode log too.",
+			"description": "Inert since v2.3.0. The custom panel (with the benchmark it started) was removed; this setting is kept only so existing settings files stay valid.",
 			"type": "int",
 			"min": 3,
 			"max": 60,
