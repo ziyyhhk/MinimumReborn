@@ -12,7 +12,6 @@ add_library(${PROJECT_NAME} SHARED
     src/rendering.cpp
     src/frame_gate.cpp
     src/gpu_timer.cpp
-    src/benchmark.cpp
     src/system_tuning.cpp
     src/ui.cpp
 )
