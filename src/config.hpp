@@ -52,6 +52,11 @@ namespace reborn {
         // program's vertex stage (the shape of fragment-only effects). Anything else draws
         // untouched. Win64-only; on other targets only the stock program is filtered.
         bool customShaderFilter = true;
+        // GPU per-quad batch filter (experimental, opt-in, Windows only): the same scan the
+        // CPU filter performs, run as a GL 4.3 compute shader over the atlas vertex VBO, with
+        // the result submitted through glDrawElementsIndirect. Only batches larger than 1024
+        // quads use it; anything GL < 4.3 or any failure falls back to the CPU filter.
+        bool gpuBatchCull = false;
         // Full suppression of off-screen particle simulation: update() is skipped for
         // systems whose live particles are fully outside the expanded view. Opt-in.
         bool particleSuppression = false;

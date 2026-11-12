@@ -25,6 +25,7 @@
 #include <cstdint>
 #include <cstring>
 #include "config.hpp"
+#include "gpu_cull.hpp"
 #include "rendering.hpp"
 
 using namespace geode::prelude;
@@ -160,6 +161,46 @@ using namespace geode::prelude;
 // What this is NOT: a replacement renderer. Draw order, blending, glow, clipping, shaders and
 // texture state are untouched because every kept draw still goes through the original
 // cocos2d function in the original order.
+
+namespace reborn {
+
+    // Uploads the atlas dirty range - byte-identical to what the original draw uploads -
+    // and clears the dirty flag. Shared by the CPU and GPU filter paths.
+    void uploadAtlasVerticesIfDirty(CCTextureAtlas* atlas, unsigned int total) {
+        glBindBuffer(GL_ARRAY_BUFFER, atlas->m_pBuffersVBO[0]);
+        if (atlas->m_bDirty) {
+            glBufferSubData(
+                GL_ARRAY_BUFFER, 0,
+                static_cast<GLsizeiptr>(sizeof(ccV3F_C4B_T2F_Quad) * total),
+                atlas->getQuads()
+            );
+            atlas->m_bDirty = false;
+        }
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+    }
+
+    // Enables PosColorTex attributes and binds the interleaved pointers against the atlas
+    // vertex VBO. The buffer binding captured at glVertexAttribPointer time persists.
+    void setupAtlasVertexAttribs(CCTextureAtlas* atlas) {
+        glBindBuffer(GL_ARRAY_BUFFER, atlas->m_pBuffersVBO[0]);
+        ccGLEnableVertexAttribs(kCCVertexAttribFlag_PosColorTex);
+        GLsizei const stride = static_cast<GLsizei>(sizeof(ccV3F_C4B_T2F));
+        glVertexAttribPointer(
+            kCCVertexAttrib_Position, 3, GL_FLOAT, GL_FALSE, stride,
+            reinterpret_cast<GLvoid const*>(offsetof(ccV3F_C4B_T2F, vertices))
+        );
+        glVertexAttribPointer(
+            kCCVertexAttrib_Color, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride,
+            reinterpret_cast<GLvoid const*>(offsetof(ccV3F_C4B_T2F, colors))
+        );
+        glVertexAttribPointer(
+            kCCVertexAttrib_TexCoords, 2, GL_FLOAT, GL_FALSE, stride,
+            reinterpret_cast<GLvoid const*>(offsetof(ccV3F_C4B_T2F, texCoords))
+        );
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+    }
+
+}
 
 namespace {
 
@@ -439,6 +480,10 @@ namespace {
     // to disagree with the engine.
     constexpr unsigned int kMaxFilterQuads = 16383;  // 4 * 16383 + 3 = 65535
     constexpr double kFilterNdcMargin = 0.005;
+    // Batches larger than this are scanned by the GL 4.3 compute path when it is enabled;
+    // smaller ones stay on the CPU filter, where a dispatch plus its barrier would cost
+    // more than the scan. The threshold is a static tuning constant, not a setting.
+    constexpr unsigned int kGpuBatchCullMinQuads = 1024;
 
     // Static storage: one consumer on the main thread and a fixed upper bound, so the draw
     // path never allocates.
@@ -638,30 +683,8 @@ namespace {
 
         ccGLBindTexture2D(texture->getName());
 
-        glBindBuffer(GL_ARRAY_BUFFER, atlas->m_pBuffersVBO[0]);
-        if (atlas->m_bDirty) {
-            glBufferSubData(
-                GL_ARRAY_BUFFER, 0,
-                static_cast<GLsizeiptr>(sizeof(ccV3F_C4B_T2F_Quad) * total),
-                atlas->getQuads()
-            );
-            atlas->m_bDirty = false;
-        }
-
-        ccGLEnableVertexAttribs(kCCVertexAttribFlag_PosColorTex);
-        GLsizei const stride = static_cast<GLsizei>(sizeof(ccV3F_C4B_T2F));
-        glVertexAttribPointer(
-            kCCVertexAttrib_Position, 3, GL_FLOAT, GL_FALSE, stride,
-            reinterpret_cast<GLvoid const*>(offsetof(ccV3F_C4B_T2F, vertices))
-        );
-        glVertexAttribPointer(
-            kCCVertexAttrib_Color, 4, GL_UNSIGNED_BYTE, GL_TRUE, stride,
-            reinterpret_cast<GLvoid const*>(offsetof(ccV3F_C4B_T2F, colors))
-        );
-        glVertexAttribPointer(
-            kCCVertexAttrib_TexCoords, 2, GL_FLOAT, GL_FALSE, stride,
-            reinterpret_cast<GLvoid const*>(offsetof(ccV3F_C4B_T2F, texCoords))
-        );
+        reborn::uploadAtlasVerticesIfDirty(atlas, total);
+        reborn::setupAtlasVertexAttribs(atlas);
 
         // With no element buffer bound, the pointer addresses client memory. That is legal in
         // the compatibility context cocos2d 2.2 creates on Windows.
@@ -1148,6 +1171,23 @@ struct BatchNodeTelemetry : Modify<BatchNodeTelemetry, CCSpriteBatchNode> {
                 }
 
                 g_batchScanBudget -= total;
+
+                // GPU compute path for large batches (opt-in). One dispatch, no readback,
+                // indices built on the GPU, submitted with glDrawElementsIndirect. Any
+                // failure falls back to the CPU filter below with nothing drawn and no
+                // GL state left bound. The CPU path re-uploads nothing (the dirty flag was
+                // cleared above).
+                if (reborn::config().gpuBatchCull && total > kGpuBatchCullMinQuads) {
+                    CC_NODE_DRAW_SETUP();
+                    ccGLBlendFunc(m_blendFunc.src, m_blendFunc.dst);
+                    reborn::uploadAtlasVerticesIfDirty(atlas, total);
+                    if (reborn::drawBatchGpuCull(
+                            atlas, total, this->getShaderProgram()->getProgram())
+                        == reborn::GpuCullResult::Submitted) {
+                        return;
+                    }
+                    // Submitted nothing; the CPU filter runs below instead.
+                }
                 ++g_hot.batchScans;
                 unsigned int kept = 0;
                 if (reborn::config().shaderTrace) {

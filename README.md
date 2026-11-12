@@ -4,14 +4,15 @@ A rendering-focused optimization mod for Geometry Dash 2.2081, built with C++20 
 Geode SDK. It is a successor to [Minimum](https://github.com/ziyyhhk/Minimum), with the
 render path as the main subject rather than a settings collection.
 
-**Status: v2.4.1.** The measured runtime evidence in this
+**Status: v2.3.1.** The measured runtime evidence in this
 README and in `DEVELOPMENT_REPORT.md` - the Engine vs Optimized A/B table and the skip counts -
 comes from earlier in-game runs on a Windows laptop, not from estimates. Those runs predate the
-v2.4.0 per-quad batch filter and the v2.4.1 custom-shader filter, so they do not measure the
-current build. The custom panel was
+per-quad batch filter, so they do not measure the current build. The custom panel was
 **removed in v2.3.0**: every setting is edited on the native Geode settings page, which the
-pause menu's MR button opens directly. v2.4.1 has not been launched or played yet; FPS impact of
-the batch filters and of the GPU frame-time line is **not measured**.
+pause menu's MR button opens directly. The v2.4.0 per-quad batch filter, the v2.4.1
+custom-shader filter and the GPU compute batch filter shipped here as **v2.3.1** (the 2.4.x
+line was never released); the game has **not been launched or played** with any of them, and
+the FPS impact of the batch filters and of the GPU frame-time line is **not measured**.
 
 ## What it does
 
@@ -73,6 +74,9 @@ exhausted per-frame budget (65,536 quads) falls back to the untouched draw. If n
 survives, the GL submission is skipped and the atlas dirty flag stays set for the next normal
 upload. Only `draw()` is affected; `visit()`,
 updates, triggers, physics and object management are untouched.
+
+An optional GPU path (`gpu-batch-cull`, Windows, GL 4.3, off by default) runs the same scan on
+the GPU instead of the CPU for batches larger than 1024 quads; see section 16.
 
 **Status: not measured in-game.** The counter to watch on the first run is `quads culled /
 scanned` on the Detailed overlay; the level must look identical with the filter on and off.
@@ -203,6 +207,12 @@ These were considered and deliberately left out rather than faked:
   equivalent and was not attempted. Documented as future work.
 * **A GPU-heavy renderer rewrite.** No compute-shader or multi-pass renderer replaces the
   engine. The mod changes which existing quads are submitted, not how the engine shades them.
+  v2.3.1 adds an optional GPU implementation of the existing per-quad batch filter
+  (`gpu-batch-cull`, off by default, section 16). That is the only part of the GPU
+  direction present in this build; there is no replacement renderer, no sprite-mesh
+  rendering, no group-state transform engine and no custom z-order sorting. Bismuth's
+  full renderer was evaluated as a design reference only (it is GPL-licensed); none of its
+  code, shaders or data files are included.
 * **Automatic quality presets by frame time.** The only automatic adjustment is the opt-in
   particle cap (off by default), which changes pool allocation, never simulation.
 * **A "disable glow" switch.** GD's glow is part of the batched level path, so neither the
@@ -309,7 +319,7 @@ Runtime evidence (this laptop, details and numbers above):
   zero-pixel and batch-quad skips can only fire where the original draw would submit geometry
   covering no pixels.
 
-### Trace procedure (v2.4.1)
+### Trace procedure (v2.3.1)
 
 The old benchmark UI is gone. The replacement is the `shader-trace` setting plus the Detailed
 overlay:
@@ -669,3 +679,66 @@ measured**. The two new hooks are build-clean and their Windows import symbols a
 `?update@CCParticleSystem@cocos2d@@UEAAXM@Z`), but hook *installation* happens at runtime and
 has not been exercised here — treat them as unverified until the first launch shows them on the
 Detailed overlay.
+
+## 16. v2.3.1 - the GPU batch filter (experimental, off by default)
+
+The per-quad batch filter (section 3) decides, on the CPU, which quads out of a batched level
+draw cannot produce a pixel, and leaves them out of the index list. `gpu-batch-cull` runs that
+exact same decision on the GPU with a GL 4.3 compute shader, for batches larger than 1024
+quads, and submits the result with `glDrawElementsIndirect`. No code from any other renderer
+was used; the shader and the index pipeline are written for this mod.
+
+What changes and what does not:
+
+* **No copy of the vertex data, no readback.** The atlas vertex VBO is bound directly as a
+  read-only shader storage buffer - the same bytes the original draw would upload. Each compute
+  invocation projects one quad (screen-space MVP, `w > 1e-6`, NaN fails open to keeping the
+  quad), drops it when its four corners lie fully outside the clip volume plus the same 0.005
+  NDC margin the CPU filter uses or when its area is below the same epsilon, and otherwise
+  appends its six indices to an output buffer while atomically adding 6 to the draw count
+  stored in the indirect command. `glDrawElementsIndirect` then reads the count from that
+  command, so the CPU never learns how many quads survived - when everything is culled the
+  command carries count 0 and the draw is a no-op. If you want exact culled/kept numbers,
+  keep using the CPU path; the GPU path reports only its own dispatch and scanned-quad
+  counters.
+* **The batch keeps its single GL draw, blend state and atlas order.** Kept indices point at
+  the same vertices in the same sequence (tl, bl, tr, br, tr, bl), and the atlas's own index
+  buffer is never written. Draw order, blending, glow, clipping, z-order, shaders and the
+  dirty upload are exactly as in the CPU path.
+* **Every gate still runs on the CPU first.** The child `updateTransform` pass, the grid
+  check, the stock-or-verified-passthrough program rule, the screen-space projection test, the
+  16,383-quad cap and the 65,536-quad per-frame scan budget all apply before the GPU path is
+  considered. The GPU path only replaces the scan and the index emission.
+* **Fail-open everywhere.** GL older than 4.3, a missing entry point (cocos ships a GLEW
+  limited to GL 4.2; the 4.3 functions are resolved at runtime via `wglGetProcAddress`, and the
+  rest via `glew32.dll`'s `__glew*` exports), a shader that fails to compile or link, or a
+  non-screen-space projection all return "unavailable" before anything is drawn; the CPU
+  filter then runs instead. The first failure latches for the process lifetime, so a bad driver
+  disables the path permanently rather than faulting every frame.
+* **1024-quad switchover.** One compute dispatch plus one memory barrier costs more than a
+  few hundred index-list passes ever do on the CPU, so small batches stay on the CPU filter.
+  The threshold is a static constant, not a setting; it trades a small misprediction in either
+  direction for never making small batches slower.
+
+Honest status:
+
+* **Not measured in-game.** Nobody has watched a level render through the compute path. The
+  Detailed overlay reports `gpu batches` and `gpu quads` so first runs can confirm dispatches
+  happen and quads get scanned; there is deliberately no culled-count readback, so the visual
+  A/B (`gpu-batch-cull` on/off with everything else identical, `batch-culling` on) is the
+  check that matters.
+* **It is off by default and by any profile**, because it is unverified and because its target
+  - very large batches in shader-heavy levels - is exactly the case this mod has never
+  benchmarked. The CPU filter remains the default everywhere.
+* **Nothing about it changes physics, input, the FPS cap, draw order or blending.** If it ever
+  looks wrong, turn it off; the CPU path is the documented fallback and is unaffected.
+* **Relationship to third-party renderers.** The compute-culling idea is the same
+  architecture as the GPL-licensed renderers that exist for this game. They were used as a
+  design reference only: no code, shaders or assets from any of them are included, and
+  nothing here plugs into or patches any other mod.
+
+**Version note.** v2.3.1 is the first release since v2.3.0 and ships everything that existed
+on `main` as v2.4.0 and v2.4.1 (the per-quad batch filter, the custom-shader filter, the
+tighter live-particle world-rectangle cull, the 65,536-quad scan budget) plus this GPU path.
+The 2.4.x line was never published, so the release sequence continues from 2.3.0. The version
+2.4.1 was set to 2.3.1 deliberately.

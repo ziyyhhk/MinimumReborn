@@ -644,3 +644,55 @@ bindings that do not exist in this Geode version (`CCNode::getOpacity`,
 types not being exported by name. Any future work on this codebase should assume those
 bindings are unavailable and read the texture or vertex data through the object that already
 hands it over.
+
+---
+
+## v2.3.1 report (2026-11-12)
+
+Target: Geometry Dash 2.2081 (Windows), Geode 5.11.2, C++20. Repository:
+https://github.com/ziyyhhk/MinimumReborn. v2.3.1 is the first release since v2.3.0; it ships
+the v2.4.0/v2.4.1 work plus a new experimental GPU path. The 2.4.x line was never published or
+run in-game; the version was deliberately reset to 2.3.1.
+
+What was added in this phase:
+
+1. **GPU Batch Filter** (gpu-batch-cull, off by default): the per-quad batch-filter scan
+   moved onto the GPU. GL 4.3 compute shader, one invocation per quad, reading the atlas vertex
+   VBO as an SSBO (zero-copy), emitting indices and the draw count into a glDrawElementsIndirect
+   command. No readback. Batches > 1024 quads only. All CPU-side gates (updateTransform,
+   grid, stock-or-verified-passthrough program, screen-space projection, 16,383-quad cap,
+   65,536-quad per-frame budget) apply before the GPU path is considered. Any failure
+   (pre-4.3 context, missing entry points - cocos's GLEW stops at 4.2, so 4.3 symbols come
+   from wglGetProcAddress and the rest from glew32.dll __glew* exports - shader build
+   error, non-screen-space projection) falls back to the CPU filter with nothing drawn twice.
+   Failure latches for the session. New gpu batches / gpu quads counters on the Detailed
+   overlay. The shader, the barrier usage and the index pipeline are written from scratch for
+   this project; GPL-licensed third-party renderers were used as a design reference only. No
+   code or shaders from them are included.
+2. **Overlay**: the Detailed mode now reports gpu batches and gpu quads (submitted draws
+   and scanned quads). It does not report culled/kept counts; getting them would need a
+   readback, which this path deliberately never performs.
+3. **Versioning**: mod.json and CMakeLists.txt report v2.3.1. The never-released 2.4.x
+   changelog entries are marked as such and point at v2.3.1.
+
+Verification performed:
+
+* Source reviewed against the cocos2d-x 2.2 headers and the pinned Geode SDK 5.11.2 layout:
+  vertex struct (ccV3F_C4B_T2F, 24 bytes/vertex, quad corners tl/bl/tr/br), atlas VBO binding
+  points, m_pBuffersVBO layout, dirty-upload semantics, and the Windows code paths already
+  present in this codebase (GL entry-point resolution via glew32.dll exports, as in
+  gpu_timer.cpp).
+* CI build (Windows, Geode 5.11.2) is the only compiler for this project; see the Actions run
+  linked from the v2.3.1 release. No game launch has happened.
+* **FPS impact: not measured. In-game correctness: unverified.** The v2.3.1 release notes and
+  the gpu-batch-cull setting description both say so.
+
+First-run checks (in priority order):
+
+1. The level must look identical with gpu-batch-cull on and off (with atch-culling on).
+   If it does not, turn gpu-batch-cull off immediately; the CPU filter is the fallback and
+   is unaffected.
+2. gpu batches and gpu quads on the Detailed overlay should move only on levels with
+   >1024-quad batches - expect Stereo Madness to barely or never engage it (about 400
+   quads/frame). It is aimed at shader-heavy levels.
+3. No FPS gain is claimed for any configuration of this build.

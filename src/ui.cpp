@@ -8,6 +8,7 @@
 #include <string>
 #include "config.hpp"
 #include "frame_stats.hpp"
+#include "gpu_cull.hpp"
 #include "hud.hpp"
 #include "rendering.hpp"
 
@@ -84,7 +85,7 @@ namespace {
             double const lowFps = stats.onePercentLowFps(240);
             double const workMs = stats.averageWorkMs(60);
 
-            char text[768];
+            char text[1024];
             if (cfg.overlayDetailed) {
                 char lowText[32];
                 if (lowFps > 0.5) std::snprintf(lowText, sizeof(lowText), "%.0f", lowFps);
@@ -98,7 +99,8 @@ namespace {
                     "%s%u FPS%s | avg %.1f ms | p95 %.1f ms | 1%% low %s\n"
                     "logic %u/s | draw %.2f ms (worst %.2f ms) | gpu %s | %s | renderer %s\n"
                     "scene %u/%u/s | sprite fast-out %u/s | particles %u/%u/s | editor %u/s | capped %u/s | batch culls %llu\n"
-                    "quads culled %llu | batch scans %llu | fully culled %llu | sims supp %llu | trace binds %llu",
+                    "quads culled %llu | batch scans %llu | fully culled %llu | sims supp %llu | trace binds %llu\n"
+                    "gpu batches %llu | gpu quads %llu",
                     cfg.enabled ? "" : "(OFF) ", fps,
                     counters.throttled.load(std::memory_order_relaxed) ? " (background)" : "",
                     avgMs, p95Ms, lowText,
@@ -123,7 +125,9 @@ namespace {
                     static_cast<unsigned long long>(
                         counters.particleSimsSuppressed.load(std::memory_order_relaxed)),
                     static_cast<unsigned long long>(
-                        counters.shaderTraceBinds.load(std::memory_order_relaxed))
+                        counters.shaderTraceBinds.load(std::memory_order_relaxed)),
+                    static_cast<unsigned long long>(reborn::gpuCullBatchesSubmitted()),
+                    static_cast<unsigned long long>(reborn::gpuCullQuadsScanned())
                 );
             }
             else {
