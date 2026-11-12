@@ -124,6 +124,15 @@
 			"default": false,
 			"enable-if": "batch-culling"
 		},
+		"renderer-diagnostics": {
+			"name": "Renderer Diagnostics (Phase 1)",
+			"description": "Phase 1 of the experimental GPU renderer: counts the level's objects and sprites once at level entry and samples the size of GD's per-frame visibility set, then logs the totals (and shows them on the Detailed overlay). It reads game state and changes nothing - no culling, no draw changes, no rendering. Used to plan the GPU visibility pass. Windows only, off by default.",
+			"type": "bool",
+			"platforms": [
+				"win"
+			],
+			"default": false
+		},
 		"gpu-frame-time": {
 			"name": "GPU Frame Time (GL_TIME_ELAPSED)",
 			"description": "Measures the GPU time of the submitted frame with a GL timer query and shows it on the Detailed overlay ('gpu'). Measurement only: it never changes GL state, and the result is read back one frame late with a non-blocking availability check (the frame path never waits on the GPU). Windows only.",

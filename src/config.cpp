@@ -256,6 +256,7 @@ namespace reborn {
         c.batchCulling = mod->getSettingValue<bool>("batch-culling");
         c.customShaderFilter = mod->getSettingValue<bool>("custom-shader-filter");
         c.gpuBatchCull = mod->getSettingValue<bool>("gpu-batch-cull");
+        c.rendererDiagnostics = mod->getSettingValue<bool>("renderer-diagnostics");
         c.particleSuppression = mod->getSettingValue<bool>("particle-suppression");
         c.shaderTrace = mod->getSettingValue<bool>("shader-trace");
         c.gpuFrameTime = mod->getSettingValue<bool>("gpu-frame-time");
@@ -329,6 +330,7 @@ namespace reborn {
         mod->setSettingValue<bool>("custom-shader-filter", true);
         // GPU batch cull is experimental; reset turns it off.
         mod->setSettingValue<bool>("gpu-batch-cull", false);
+        mod->setSettingValue<bool>("renderer-diagnostics", false);
         // Retired key: cocos2d already caches program binds, so there is nothing to opt into.
         // Reset it to false so an old install does not leave a misleading value behind.
         mod->setSettingValue<bool>("shader-state-cache", false);
