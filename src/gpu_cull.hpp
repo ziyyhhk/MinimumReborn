@@ -56,6 +56,6 @@ namespace reborn {
     // The atlas must already be uploaded - the caller shares the upload helper for both
     // paths. If Unavailable is returned, no GL state is left bound and nothing was
     // drawn; the caller should fall back to the CPU path.
-    GpuCullResult drawBatchGpuCull(CCTextureAtlas* atlas, unsigned int total, GLuint batchProgram);
+    GpuCullResult drawBatchGpuCull(cocos2d::CCTextureAtlas* atlas, unsigned int total, GLuint batchProgram);
 
 }

@@ -34,10 +34,10 @@ namespace reborn {
 
     // Uploads the atlas vertex buffer (the exact range the original draw would upload) if
     // it is dirty, then clears the dirty flag. Shared by the CPU and GPU batch-filter paths.
-    void uploadAtlasVerticesIfDirty(CCTextureAtlas* atlas, unsigned int total);
+    void uploadAtlasVerticesIfDirty(cocos2d::CCTextureAtlas* atlas, unsigned int total);
 
     // Enables PosColorTex vertex attributes and binds the interleaved ccV3F_C4B_T2F pointers
     // against the atlas vertex VBO. Shared by the CPU and GPU batch-filter paths.
-    void setupAtlasVertexAttribs(CCTextureAtlas* atlas);
+    void setupAtlasVertexAttribs(cocos2d::CCTextureAtlas* atlas);
 
 }

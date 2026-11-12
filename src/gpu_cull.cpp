@@ -99,12 +99,12 @@ namespace reborn {
             if (!glew) glew = LoadLibraryA("glew32.dll");
             if (!glew) return false;
 
-            auto const proc = [glew](char const* name) -> void const* {
-                return reinterpret_cast<void const*>(GetProcAddress(glew, name));
+            auto const proc = [glew](char const* name) -> FARPROC {
+                return GetProcAddress(glew, name);
             };
             // cocos ships GLEW 2.3.4 with GL <= 4.2 symbols; every entry needed here exists
             // there except glDispatchCompute, which comes from wglGetProcAddress.
-            auto const load = [&proc](char const* suffix) -> void const* {
+            auto const load = [&proc](char const* suffix) -> FARPROC {
                 std::string name = "__glew";
                 name += suffix;
                 return proc(name.c_str());
@@ -112,11 +112,10 @@ namespace reborn {
 
             HMODULE opengl = GetModuleHandleA("opengl32.dll");
             pGetString = reinterpret_cast<GlGetString>(
-                opengl ? reinterpret_cast<void const*>(GetProcAddress(opengl, "glGetString")) : nullptr
+                opengl ? GetProcAddress(opengl, "glGetString") : nullptr
             );
-            pDispatchCompute = reinterpret_cast<GlDispatchCompute>(
-                reinterpret_cast<void const*>(wglGetProcAddress("glDispatchCompute"))
-            );
+            PROC const dispatchProc = wglGetProcAddress("glDispatchCompute");
+            pDispatchCompute = reinterpret_cast<GlDispatchCompute>(dispatchProc);
             pGenBuffers = reinterpret_cast<GlGenBuffers>(load("GenBuffers"));
             pBindBuffer = reinterpret_cast<GlBindBuffer>(load("BindBuffer"));
             pBufferData = reinterpret_cast<GlBufferData>(load("BufferData"));
@@ -360,7 +359,7 @@ void main() {
         return s_quadsScanned.load(std::memory_order_relaxed);
     }
 
-    GpuCullResult drawBatchGpuCull(CCTextureAtlas* atlas, unsigned int total, GLuint batchProgram) {
+    GpuCullResult drawBatchGpuCull(cocos2d::CCTextureAtlas* atlas, unsigned int total, GLuint batchProgram) {
         if (!atlas || total == 0 || total > kMaxGpuQuads) return GpuCullResult::Unavailable;
         if (!ensureReady()) return GpuCullResult::Unavailable;
 
@@ -405,7 +404,7 @@ void main() {
         // The batch's program (bound by the caller's CC_NODE_DRAW_SETUP) draws.
         pUseProgram(batchProgram);
 
-        if (CCTexture2D* texture = atlas->getTexture()) {
+        if (cocos2d::CCTexture2D* texture = atlas->getTexture()) {
             ccGLBindTexture2D(texture->getName());
         }
 
@@ -436,7 +435,7 @@ namespace reborn {
     bool gpuBatchCullAvailable() { return false; }
     std::uint64_t gpuCullBatchesSubmitted() { return 0; }
     std::uint64_t gpuCullQuadsScanned() { return 0; }
-    GpuCullResult drawBatchGpuCull(CCTextureAtlas*, unsigned int, unsigned int) {
+    GpuCullResult drawBatchGpuCull(cocos2d::CCTextureAtlas*, unsigned int, unsigned int) {
         return GpuCullResult::Unavailable;
     }
 }
