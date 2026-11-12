@@ -11,6 +11,7 @@ add_library(${PROJECT_NAME} SHARED
     src/config.cpp
     src/rendering.cpp
     src/gpu_cull.cpp
+    src/renderer_diag.cpp
     src/frame_gate.cpp
     src/gpu_timer.cpp
     src/system_tuning.cpp

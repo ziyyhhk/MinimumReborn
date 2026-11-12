@@ -10,6 +10,7 @@
 #include "frame_stats.hpp"
 #include "gpu_cull.hpp"
 #include "hud.hpp"
+#include "renderer_diag.hpp"
 #include "rendering.hpp"
 
 using namespace geode::prelude;
@@ -85,8 +86,20 @@ namespace {
             double const lowFps = stats.onePercentLowFps(240);
             double const workMs = stats.averageWorkMs(60);
 
-            char text[1024];
+            char text[1100];
             if (cfg.overlayDetailed) {
+                char diagSuffix[192] = "";
+                if (cfg.rendererDiagnostics) {
+                    std::snprintf(
+                        diagSuffix, sizeof(diagSuffix),
+                        "\ndiag obj %llu | sprites %llu | hidden %llu | vis avg %llu (max %llu)",
+                        static_cast<unsigned long long>(reborn::diagObjectCount()),
+                        static_cast<unsigned long long>(reborn::diagSpriteCount()),
+                        static_cast<unsigned long long>(reborn::diagHiddenCount()),
+                        static_cast<unsigned long long>(reborn::diagVisibleAvg()),
+                        static_cast<unsigned long long>(reborn::diagVisibleMax())
+                    );
+                }
                 char lowText[32];
                 if (lowFps > 0.5) std::snprintf(lowText, sizeof(lowText), "%.0f", lowFps);
                 else std::snprintf(lowText, sizeof(lowText), "--");
@@ -100,7 +113,7 @@ namespace {
                     "logic %u/s | draw %.2f ms (worst %.2f ms) | gpu %s | %s | renderer %s\n"
                     "scene %u/%u/s | sprite fast-out %u/s | particles %u/%u/s | editor %u/s | capped %u/s | batch culls %llu\n"
                     "quads culled %llu | batch scans %llu | fully culled %llu | sims supp %llu | trace binds %llu\n"
-                    "gpu batches %llu | gpu quads %llu",
+                    "gpu batches %llu | gpu quads %llu%s",
                     cfg.enabled ? "" : "(OFF) ", fps,
                     counters.throttled.load(std::memory_order_relaxed) ? " (background)" : "",
                     avgMs, p95Ms, lowText,
@@ -127,7 +140,8 @@ namespace {
                     static_cast<unsigned long long>(
                         counters.shaderTraceBinds.load(std::memory_order_relaxed)),
                     static_cast<unsigned long long>(reborn::gpuCullBatchesSubmitted()),
-                    static_cast<unsigned long long>(reborn::gpuCullQuadsScanned())
+                    static_cast<unsigned long long>(reborn::gpuCullQuadsScanned()),
+                    diagSuffix
                 );
             }
             else {

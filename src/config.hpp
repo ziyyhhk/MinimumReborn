@@ -57,6 +57,10 @@ namespace reborn {
         // the result submitted through glDrawElementsIndirect. Only batches larger than 1024
         // quads use it; anything GL < 4.3 or any failure falls back to the CPU filter.
         bool gpuBatchCull = false;
+        // GPU renderer Phase 1 diagnostics: counts the level's objects/sprites once per
+        // level entry and samples GD's per-frame visibility set size. Reads game state,
+        // changes nothing. Default off.
+        bool rendererDiagnostics = false;
         // Full suppression of off-screen particle simulation: update() is skipped for
         // systems whose live particles are fully outside the expanded view. Opt-in.
         bool particleSuppression = false;
