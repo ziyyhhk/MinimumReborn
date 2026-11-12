@@ -5,18 +5,23 @@ in-game performance.
 
 ## Where the project stands
 
-* Version: **v2.3.1** in the working tree, not committed, built or installed yet. CI run for
-  the release (Windows, Geode 5.11.2) is pending at the time of writing; release `v2.3.1` on
-  GitHub is the goal of this session. `main` was at `ea22d75` (labeled v2.4.1, built green by
-  CI run `43120821956` on 2026-11-12). The v2.4.0/v2.4.1 line was never released, so the
-  version was deliberately reset to **2.3.1**, which ships v2.4.0 + v2.4.1 + the new GPU batch
-  filter.
-* The v2.4.1 artifact (`ziyyhhk.minimum-reborn.geode`, 291,638 bytes, sha256
-  `FA1A00859E4B924BFFC2C60F734E81F64D7F9973C08EC68EE61158B2A4DE921D`) is installed to the
-  live game folder at `%LOCALAPPDATA%\GeometryDash\geode\mods\ziyyhhk.minimum-reborn.geode`.
-  The previously installed v2.4.0 build (`B1B024BB...`) and your current `settings.json` are
-  backed up at `C:\Users\akira\AppData\Local\Temp\opencode\live-backup`. The v1.3.0 build is
-  backed up there too.
+* Version: **v2.3.1** released on GitHub on 2026-11-12
+  (<https://github.com/ziyyhhk/MinimumReborn/releases/tag/v2.3.1>). `main` is at merge commit
+  `109ac16`. CI built it green twice (PR run `43129798330`, main push run `43130104974`,
+  Windows, Geode 5.11.2, Release + LTO). The release artifact (`ziyyhhk.minimum-reborn.geode`,
+  299,393 bytes, sha256
+  `F4F807F0CA85A049CD882CB78B0D77B15ADC90AE33B4773656CF94753197C3E2`) was downloaded and
+  inspected: `mod.json` v2.3.1, `ziyyhhk.minimum-reborn.dll` 236,032 bytes, `about.md`,
+  `CHANGELOG.md`, `logo.png`, resources, `.geode_cache`.
+  The v2.4.0/v2.4.1 line was never released, so the version was deliberately reset to
+  **2.3.1**, which ships v2.4.0 + v2.4.1 + the new GPU batch filter.
+* The v2.3.1 artifact is **untested in-game**. It is not installed to the live game folder
+  yet; the v2.4.1 build (291,638 bytes, sha256
+  `FA1A00859E4B924BFFC2C60F734E81F64D7F9973C08EC68EE61158B2A4DE921D`) is still the installed
+  one. The previously installed v2.4.0 build (`B1B024BB...`) and your current `settings.json` are
+  backed up at `C:\Users\akira\AppData\Local\Temp\opencode\live-backup`. To install v2.3.1,
+  back up the live folder first (as before), then copy the release artifact over
+  `ziyyhhk.minimum-reborn.geode` in `%LOCALAPPDATA%\GeometryDash\geode\mods`.
 * The game has not been launched or played with any of these builds. No in-game claim exists.
 * **v2.3.1 changes** (on top of the v2.4.0 per-quad batch filter):
   1. **Custom Shader Filter** (`custom-shader-filter`, bool, **on by default**, Windows).
