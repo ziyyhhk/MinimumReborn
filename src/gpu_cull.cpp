@@ -14,11 +14,13 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <cstdio>
+#include <cstdlib>
 #include <string>
 #include "config.hpp"
 #include "gpu_cull.hpp"
 #include "rendering.hpp"
+
+using namespace geode::prelude;
 
 // GPU per-quad batch culling. See gpu_cull.hpp for the design. This file contains the
 // GL 4.3 pieces only: entry points are resolved at runtime (cocos ships a GLEW limited
@@ -313,8 +315,16 @@ void main() {
 
             char const* version = reinterpret_cast<char const*>(pGetString(kGlVersion));
             int major = 0, minor = 0;
-            if (!version || std::sscanf(version, "%d.%d", &major, &minor) != 2
-                || major < 4 || (major == 4 && minor < 3)) {
+            char* end = nullptr;
+            bool okVersion = version != nullptr;
+            if (okVersion) {
+                major = static_cast<int>(std::strtol(version, &end, 10));
+                okVersion = end != version;
+            }
+            if (okVersion && end && *end == '.') {
+                minor = static_cast<int>(std::strtol(end + 1, &end, 10));
+            }
+            if (!okVersion || major < 4 || (major == 4 && minor < 3)) {
                 log::warn("gpu batch cull: GL context is older than 4.3; falling back to the CPU filter");
                 return false;
             }
@@ -405,7 +415,7 @@ void main() {
         pUseProgram(batchProgram);
 
         if (cocos2d::CCTexture2D* texture = atlas->getTexture()) {
-            ccGLBindTexture2D(texture->getName());
+            cocos2d::ccGLBindTexture2D(texture->getName());
         }
 
         reborn::setupAtlasVertexAttribs(atlas);
