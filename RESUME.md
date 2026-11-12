@@ -1,27 +1,23 @@
-# Resume notes - 2026-11-12 (v2.3.1)
+# Resume notes - 2026-11-12 (v2.3.2)
 
 Everything below is checkable in the repo or in the CI run list; nothing here is a claim of
 in-game performance.
 
 ## Where the project stands
 
-* Version: **v2.3.1** released on GitHub on 2026-11-12
-  (<https://github.com/ziyyhhk/MinimumReborn/releases/tag/v2.3.1>). `main` is at merge commit
-  `109ac16`. CI built it green twice (PR run `43129798330`, main push run `43130104974`,
-  Windows, Geode 5.11.2, Release + LTO). The release artifact (`ziyyhhk.minimum-reborn.geode`,
-  299,393 bytes, sha256
-  `F4F807F0CA85A049CD882CB78B0D77B15ADC90AE33B4773656CF94753197C3E2`) was downloaded and
-  inspected: `mod.json` v2.3.1, `ziyyhhk.minimum-reborn.dll` 236,032 bytes, `about.md`,
-  `CHANGELOG.md`, `logo.png`, resources, `.geode_cache`.
-  The v2.4.0/v2.4.1 line was never released, so the version was deliberately reset to
-  **2.3.1**, which ships v2.4.0 + v2.4.1 + the new GPU batch filter.
-* The v2.3.1 artifact is **untested in-game**. It is not installed to the live game folder
-  yet; the v2.4.1 build (291,638 bytes, sha256
-  `FA1A00859E4B924BFFC2C60F734E81F64D7F9973C08EC68EE61158B2A4DE921D`) is still the installed
-  one. The previously installed v2.4.0 build (`B1B024BB...`) and your current `settings.json` are
-  backed up at `C:\Users\akira\AppData\Local\Temp\opencode\live-backup`. To install v2.3.1,
-  back up the live folder first (as before), then copy the release artifact over
-  `ziyyhhk.minimum-reborn.geode` in `%LOCALAPPDATA%\GeometryDash\geode\mods`.
+* Version: **v2.3.2** on `main`, released on GitHub on 2026-11-12
+  (<https://github.com/ziyyhhk/MinimumReborn/releases/tag/v2.3.2>). v2.3.1 shipped a crash in
+  the GPU Batch Filter (DEP violation in glew32.dll at `_glewCreateShader`; root cause: GLEW
+  `__glew*` exports are function-pointer table variables, dereferenced only in the fix, not in
+  the shipped call path). v2.3.2 dereferences them, treats `wglGetProcAddress` failure markers
+  as unavailable, and latches the GPU path off when anything is missing - CPU filter fallback,
+  same as every other GL feature. Do not use v2.3.1 with GPU Batch Filter enabled.
+* The v2.3.2 artifact is **untested in-game and is the first build with a testable GPU Batch
+  Filter**. It is installed to the live game folder at
+  `C:\Users\akira\Documents\Games\Geometry Dash\geode\mods\ziyyhhk.minimum-reborn.geode`
+  (hash-verified). The previous v2.3.1 build (and the v2.3.1+Phase-1 diagnostic test build) are
+  backed up at `C:\Users\akira\AppData\Local\Temp\opencode\live-backup`. Settings are the
+  owner's Extreme setup (`gpu-batch-cull` currently ON for testing, `shader-trace` still on).
 * The game has not been launched or played with any of these builds. No in-game claim exists.
 * **v2.3.1 changes** (on top of the v2.4.0 per-quad batch filter):
   1. **Custom Shader Filter** (`custom-shader-filter`, bool, **on by default**, Windows).
@@ -77,11 +73,14 @@ in-game performance.
 
 ## Honest limits
 
-* No in-game launch or measurement exists for any of these builds, including v2.3.1. No FPS
-  claim is made.
-* The GPU batch filter has never run anywhere; it is compile-verified-only. It is off by
-  default, absent from every profile, and falls back to the CPU filter on the first GL
-  failure, but it has not been watched rendering a frame.
+* No in-game launch or measurement exists for any of these builds, including v2.3.2. No FPS
+  claim is made. v2.3.1 crashed on the first GPU Batch Filter draw (DEP violation); v2.3.2
+  dereferences the GLEW table and fails safe, but the GPU path still has never run a frame.
+* The GPU batch filter crashed v2.3.1 on the first eligible batch (DEP violation inside
+  glew32.dll; my bug - GLEW table variables were called as functions). v2.3.2 dereferences
+  the table and latches the path off on any failure, which bounds the damage to
+  "falls back to the CPU filter", but it still has not run a frame in-game. Until a log
+  shows `gpu batches` moving, treat it as unavailable.
 * The custom-shader filter is only as good as GD's fragment-shaders-with-stock-vertex-pass
   shape, and only when the byte-identical verification passes at runtime. If GD displaces
   vertices in its effect programs, the filter correctly draws untouched and helps nothing -

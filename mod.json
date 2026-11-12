@@ -5,7 +5,7 @@
 	},
 	"id": "ziyyhhk.minimum-reborn",
 	"name": "Minimum Reborn",
-	"version": "v2.3.1",
+	"version": "v2.3.2",
 	"developer": "ziyyhhk",
 	"description": "A rendering-focused rebuild of Minimum. All settings live on the native Geode settings page; the pause menu button opens it. Zero-pixel and off-screen draw fast-outs, per-quad filtering inside batched level objects - including fragment-only shader effects whose vertex stage is verified byte-identical to the stock pass-through - an optional GL 4.3 compute-shader per-quad filter with indirect draw submission (Windows, experimental, off by default), live-particle culling (and optional off-screen simulation suppression), an editor-only culling policy, a GPU frame-time overlay line (GL_TIME_ELAPSED), and a No Additional Input Delay ordering mode that moves all mod bookkeeping behind the game's update. Physics, input handling and the game's FPS cap are never changed. Windows build for Geometry Dash 2.2081.",
 	"tags": [
