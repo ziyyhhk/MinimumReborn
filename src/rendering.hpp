@@ -1,5 +1,7 @@
 #pragma once
 
+#include <Geode/cocos/textures/CCTextureAtlas.h>
+
 // Rendering fast paths implemented by the mod.
 //
 // This is the "optimized draw path": every function here can skip a draw submission, but
@@ -29,4 +31,13 @@ namespace reborn {
 
     // True when at least one visibility test is active (renderer optimized + a cull mode).
     bool visibilityCullingActive();
+
+    // Uploads the atlas vertex buffer (the exact range the original draw would upload) if
+    // it is dirty, then clears the dirty flag. Shared by the CPU and GPU batch-filter paths.
+    void uploadAtlasVerticesIfDirty(cocos2d::CCTextureAtlas* atlas, unsigned int total);
+
+    // Enables PosColorTex vertex attributes and binds the interleaved ccV3F_C4B_T2F pointers
+    // against the atlas vertex VBO. Shared by the CPU and GPU batch-filter paths.
+    void setupAtlasVertexAttribs(cocos2d::CCTextureAtlas* atlas);
+
 }

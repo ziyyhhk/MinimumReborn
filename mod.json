@@ -5,9 +5,9 @@
 	},
 	"id": "ziyyhhk.minimum-reborn",
 	"name": "Minimum Reborn",
-	"version": "v2.4.1",
+	"version": "v2.3.1",
 	"developer": "ziyyhhk",
-	"description": "A rendering-focused rebuild of Minimum. All settings live on the native Geode settings page; the pause menu button opens it. Zero-pixel and off-screen draw fast-outs, per-quad filtering inside batched level objects - including fragment-only shader effects whose vertex stage is verified byte-identical to the stock pass-through - live-particle culling (and optional off-screen simulation suppression), an editor-only culling policy, a GPU frame-time overlay line (GL_TIME_ELAPSED), and a No Additional Input Delay ordering mode that moves all mod bookkeeping behind the game's update. Physics, input handling and the game's FPS cap are never changed. Windows build for Geometry Dash 2.2081.",
+	"description": "A rendering-focused rebuild of Minimum. All settings live on the native Geode settings page; the pause menu button opens it. Zero-pixel and off-screen draw fast-outs, per-quad filtering inside batched level objects - including fragment-only shader effects whose vertex stage is verified byte-identical to the stock pass-through - an optional GL 4.3 compute-shader per-quad filter with indirect draw submission (Windows, experimental, off by default), live-particle culling (and optional off-screen simulation suppression), an editor-only culling policy, a GPU frame-time overlay line (GL_TIME_ELAPSED), and a No Additional Input Delay ordering mode that moves all mod bookkeeping behind the game's update. Physics, input handling and the game's FPS cap are never changed. Windows build for Geometry Dash 2.2081.",
 	"tags": [
 		"performance",
 		"utility"
@@ -113,6 +113,16 @@
 			"description": "Also filter batch quads when the batch's program is a fragment-only effect whose vertex stage is byte-identical to the engine's stock PositionTextureColor program (the shape GD's shader library uses; the level is still drawn exactly once). A custom vertex stage that could move vertices is never judged by its original positions, so that batch draws untouched. Resolved per frame on Windows; any doubt falls back to the original draw. On by default; requires Batch Object Filtering. No visual change is intended or claimed - fail-open gates only.",
 			"type": "bool",
 			"default": true
+		},
+		"gpu-batch-cull": {
+			"name": "GPU Batch Filter (experimental)",
+			"description": "Batch Object Filtering, but with the scan moved onto the GPU. While on, batches larger than 1024 quads are tested by a GL 4.3 compute shader that reads the atlas vertex buffer directly and emits the surviving quads' indices; the draw is submitted with glDrawElementsIndirect, so no GPU result is ever read back by the CPU. Smaller batches use the normal CPU filter, and anything that fails - a pre-4.3 context, a missing entry point, a shader build error, a non-screen-space projection - falls back to the CPU filter with nothing drawn twice. Requires Batch Object Filtering. Windows only, off by default: it is not verified in-game yet, and for small levels one dispatch costs more than the scan it replaces.",
+			"type": "bool",
+			"platforms": [
+				"win"
+			],
+			"default": false,
+			"enable-if": "batch-culling"
 		},
 		"gpu-frame-time": {
 			"name": "GPU Frame Time (GL_TIME_ELAPSED)",

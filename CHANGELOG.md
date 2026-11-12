@@ -1,6 +1,38 @@
 # Changelog
 
-## v2.4.1
+## v2.3.1
+
+First release since v2.3.0. Ships the v2.4.0 and v2.4.1 work (which was pushed to `main` but
+never released or tested) plus a new experimental GPU path. Not verified in-game; no FPS claim
+is made. The version jump from 2.4.1 to 2.3.1 is deliberate.
+
+* **GPU Batch Filter (experimental)** (`gpu-batch-cull`, bool, Windows, **off by default**,
+  requires `batch-culling`). The per-quad batch filter decision moved to the GPU: a GL 4.3
+  compute shader reads the atlas vertex VBO as a read-only shader storage buffer (the same
+  bytes the draw would upload, never a copy), projects each quad with the screen-space MVP,
+  and appends the surviving indices to an output buffer while atomically incrementing the
+  count stored in a `glDrawElementsIndirect` command. No GPU result is ever read back by the
+  CPU; when every quad is culled the command carries count 0 and the draw is a no-op.
+  Batches larger than 1024 quads use the GPU path; smaller ones use the CPU filter, and any
+  failure - pre-4.3 context, missing entry points, shader build error, non-screen-space
+  projection - falls back to the CPU filter with nothing drawn twice. All existing gates
+  (updateTransform pass, grid, stock-or-verified-passthrough program, screen-space
+  projection, 16,383-quad cap, 65,536-quad per-frame budget) still apply. No code or shaders
+  from any third-party renderer are included; the shader and index pipeline are written for
+  this mod. Off by default and in every profile because it is unverified and because small
+  batches would be slower (one dispatch outweighs the CPU scan). Detailed overlay gains
+  `gpu batches` / `gpu quads` counters.
+* **Everything from v2.4.0, v2.4.1, unreleased at the time:** per-quad filtering inside
+  `CCSpriteBatchNode::draw` (hidden objects collapsed to zero area and fully off-screen quads
+  are left out of the index list; single GL draw, blend state and atlas order preserved; all
+  gates fail open), Custom Shader Filter (fragment-only programs verified byte-identical
+  vertex stage to stock), tighter live-particle cull (world-rectangle AABB mapped through the
+  emitter basis), scan budget raised to 65,536 quads per frame, `shader-trace` GD-side CPU
+  timings, and retirement of the redundant `shader-state-cache` rebind dedup.
+* `benchmark-seconds` stays inert; GPU 4.3 entry points are resolved at runtime (cocos's
+  GLEW stops at GL 4.2); a failed GPU path latches off for the session.
+
+## v2.4.1 (unreleased; shipped as part of v2.3.1)
 
 An iteration of the shader path, aimed at sessions where shaders, deco and triggers push the
 frame hard. It is not verified in-game; no FPS claim is made.
@@ -21,7 +53,7 @@ frame hard. It is not verified in-game; no FPS claim is made.
   the old cap, which used to silently draw untested; the new cap covers the GD object limit.
 * This build has not been released or tested in-game.
 
-## v2.4.0
+## v2.4.0 (unreleased; shipped as part of v2.3.1)
 
 This release makes the optimized renderer reach the path Geometry Dash actually uses for level
 objects. Until now the per-sprite cull examined ~19k sprites and skipped none, because GD
