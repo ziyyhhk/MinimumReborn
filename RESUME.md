@@ -19,6 +19,11 @@ in-game performance.
   backed up at `C:\Users\akira\AppData\Local\Temp\opencode\live-backup`. Settings are the
   owner's Extreme setup (`gpu-batch-cull` currently ON for testing, `shader-trace` still on).
 * The game has not been launched or played with any of these builds. No in-game claim exists.
+* v2.3.2 release artifact: `ziyyhhk.minimum-reborn.geode`, 299,233 bytes, sha256
+  `3E37AFF982BD6F8ECA69B22BEEF5CE274B62C11C5BDA591146164D51822D20B4` (matches the GitHub
+  release digest). Installed to the live folder and hash-verified after install. CI run
+  `43134984050` (main push, merge `b92cc5b`), PR #7 CI `43134729468`. v2.3.1 release remains
+  on GitHub for history but crashes with GPU Batch Filter; do not install it.
 * **v2.3.1 changes** (on top of the v2.4.0 per-quad batch filter):
   1. **Custom Shader Filter** (`custom-shader-filter`, bool, **on by default**, Windows).
      Fragment-only shader effects keep the vertex pass-through, so their vertices sit exactly
