@@ -4,15 +4,17 @@ A rendering-focused optimization mod for Geometry Dash 2.2081, built with C++20 
 Geode SDK. It is a successor to [Minimum](https://github.com/ziyyhhk/Minimum), with the
 render path as the main subject rather than a settings collection.
 
-**Status: v2.3.1.** The measured runtime evidence in this
+**Status: v2.3.2.** The measured runtime evidence in this
 README and in `DEVELOPMENT_REPORT.md` - the Engine vs Optimized A/B table and the skip counts -
 comes from earlier in-game runs on a Windows laptop, not from estimates. Those runs predate the
 per-quad batch filter, so they do not measure the current build. The custom panel was
 **removed in v2.3.0**: every setting is edited on the native Geode settings page, which the
-pause menu's MR button opens directly. The v2.4.0 per-quad batch filter, the v2.4.1
-custom-shader filter and the GPU compute batch filter shipped here as **v2.3.1** (the 2.4.x
-line was never released); the game has **not been launched or played** with any of them, and
-the FPS impact of the batch filters and of the GPU frame-time line is **not measured**.
+pause menu's MR button opens directly. v2.3.1 shipped the per-quad batch filter, the
+custom-shader filter and the GPU compute batch filter as the first release since v2.3.0; it
+also shipped a crash in the GPU compute batch filter (DEP violation, fixed in v2.3.2 - do not
+use v2.3.1 with GPU Batch Filter enabled). v2.3.2 is a crash hotfix on top of v2.3.1. The game
+has **not been launched or played** with the GPU Batch Filter; the FPS impact of the batch
+filters and of the GPU frame-time line is **not measured**.
 
 ## What it does
 

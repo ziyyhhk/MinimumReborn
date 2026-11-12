@@ -1,5 +1,26 @@
 # Changelog
 
+## v2.3.2
+
+Hotfix for the crash in v2.3.1's GPU Batch Filter.
+
+* **GPU Batch Filter crashed the game on first use (DEP violation in glew32.dll).** Root
+  cause: cocos's GLEW exports its GL entry points as function-pointer table variables
+  (`__glewCreateShader`, ...). The mod resolved them with `GetProcAddress` and called the
+  variable's address as if it were the function - the instruction fetch landed in a data
+  page, and Windows' DEP killed the process (`0xc0000005`, `_glewCreateShader + 0x0`). This
+  only affected builds with **GPU Batch Filter enabled** (off by default; the stock game was
+  unaffected). Fixed the same way the mod's GPU timer already resolves its entry points:
+  the table is dereferenced to the function pointer. A missing export or an empty table slot
+  now disables the GPU path for the session and falls back to the CPU filter - the same
+  fail-open contract every GL feature in this mod uses.
+* The GL version check now treats `wglGetProcAddress` failure markers (1, 2, 3, 0xFFFFFFFF)
+  as unavailable, and requires GL >= 4.3 before building the compute shader.
+* v2.3.1 stays on GitHub for the record; do not use it with GPU Batch Filter enabled. This
+  release contains everything in v2.3.1 plus only these fixes.
+* Verification: CI build on Windows, Geode 5.11.2. Still not launched in-game - v2.3.2 is
+  the first build anyone should test the GPU Batch Filter on.
+
 ## v2.3.1
 
 First release since v2.3.0. Ships the v2.4.0 and v2.4.1 work (which was pushed to `main` but

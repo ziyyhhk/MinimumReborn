@@ -696,3 +696,43 @@ First-run checks (in priority order):
    >1024-quad batches - expect Stereo Madness to barely or never engage it (about 400
    quads/frame). It is aimed at shader-heavy levels.
 3. No FPS gain is claimed for any configuration of this build.
+
+---
+
+## v2.3.2 report (2026-11-12)
+
+Hotfix release. v2.3.1 shipped with a fatal bug in the GPU Batch Filter path, found by the
+owner crashing into it in-game:
+
+    Faulty Module: glew32.dll
+    Exception Code: c0000005 (EXCEPTION_ACCESS_VIOLATION)
+    Crashed thread: Main
+    Stack: glew32.dll + 0x796f0 (_glewCreateShader + 0x0)
+      -> ziyyhhk.minimum-reborn.dll + 0x168f2 / 0xe9fa
+      -> CCSpriteBatchNode::visit (Minimum Reborn hook)
+
+Root cause: cocos's GLEW exports its GL entry points as function-pointer table variables
+(__glewCreateShader etc.). v2.3.1 resolved them with GetProcAddress and called the variable's
+address as the function. The CPU jumped inside a data page; Windows DEP terminated the
+process. It only triggers with GPU Batch Filter enabled (off by default), which is why the
+stock v2.3.1 runs did not crash; it fired the first time a batch with more than 1024 quads
+was drawn with the filter on. This was the first in-game evidence about the GPU path: it
+crashed before it could do anything useful. It also proves the crash site was reached (the
+flag being on and a >1024-quad batch existing), which the owner's log shows (ShaderTrace
+counters, 700k+ quads/second scanned).
+
+Fix (v2.3.2):
+
+1. __glew* table entries are dereferenced to the actual function pointer, matching how the
+   mod's GPU timer (gpu_timer.cpp) already resolves its queries. A missing export or an
+   empty table slot is detected at load; the GPU path latches off for the session and the
+   CPU filter takes over - the same fail-open pattern as every GL feature in this mod.
+2. wglGetProcAddress failure markers (1, 2, 3, 0xFFFFFFFF) are treated as unavailable.
+3. GL >= 4.3 is required before the compute shader is built; below 4.3 the GPU path does
+   not engage at all.
+
+Verification: CI (Windows, Geode 5.11.2) green required before release; the fix compiles and
+the v2.3.1 failure mode (missing entry point / old driver => latch off) is now exercised by
+construction, but nobody has watched the GPU path run a frame yet. v2.3.2 is the first build
+in which the GPU Batch Filter can be tested safely; the failure mode it shipped in v2.3.1 was
+a hard crash, not a wrong answer.

@@ -109,15 +109,27 @@ namespace reborn {
             auto const load = [&proc](char const* suffix) -> FARPROC {
                 std::string name = "__glew";
                 name += suffix;
-                return proc(name.c_str());
+                // __glewXxx symbols exported by glew32.dll are function-pointer table
+                // variables, not functions. GetProcAddress returns the address of the
+                // variable; calling it jumps into a data page and DEP kills the process
+                // (v2.3.1 crashed exactly here, DEP violation in _glewCreateShader). The
+                // real entry point is the variable's value - dereference it. A missing
+                // export or an empty table slot means the feature is unavailable at
+                // runtime and the GPU path must latch off (safe fallback to CPU filter).
+                FARPROC const* tableEntry = reinterpret_cast<FARPROC const*>(proc(name.c_str()));
+                return (tableEntry && *tableEntry) ? *tableEntry : nullptr;
             };
 
             HMODULE opengl = GetModuleHandleA("opengl32.dll");
             pGetString = reinterpret_cast<GlGetString>(
                 opengl ? GetProcAddress(opengl, "glGetString") : nullptr
             );
+            // WGL failure markers are 1, 2, 3 and 0xFFFFFFFF; treat any of them as missing.
             PROC const dispatchProc = wglGetProcAddress("glDispatchCompute");
-            pDispatchCompute = reinterpret_cast<GlDispatchCompute>(dispatchProc);
+            uintptr_t const dispatchBits = reinterpret_cast<uintptr_t>(dispatchProc);
+            pDispatchCompute = dispatchProc != nullptr && dispatchBits > 0xFFFFu
+                ? reinterpret_cast<GlDispatchCompute>(dispatchProc)
+                : nullptr;
             pGenBuffers = reinterpret_cast<GlGenBuffers>(load("GenBuffers"));
             pBindBuffer = reinterpret_cast<GlBindBuffer>(load("BindBuffer"));
             pBufferData = reinterpret_cast<GlBufferData>(load("BufferData"));
