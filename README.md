@@ -210,9 +210,9 @@ These were considered and deliberately left out rather than faked:
   v2.3.1 adds an optional GPU implementation of the existing per-quad batch filter
   (`gpu-batch-cull`, off by default, section 16). That is the only part of the GPU
   direction present in this build; there is no replacement renderer, no sprite-mesh
-  rendering, no group-state transform engine and no custom z-order sorting. Bismuth's
-  full renderer was evaluated as a design reference only (it is GPL-licensed); none of its
-  code, shaders or data files are included.
+  rendering, no group-state transform engine and no custom z-order sorting. The GPL-licensed
+  third-party renderers in this space were evaluated as a design reference only; none of
+  their code, shaders or data files are included.
 * **Automatic quality presets by frame time.** The only automatic adjustment is the opt-in
   particle cap (off by default), which changes pool allocation, never simulation.
 * **A "disable glow" switch.** GD's glow is part of the batched level path, so neither the
